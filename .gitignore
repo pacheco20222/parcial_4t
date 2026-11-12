@@ -25,5 +25,11 @@ dist/
 # os / tools
 .DS_Store
 .claude/worktrees/
+
+# project-local agent skills/plugins (installed per machine, not committed)
+.claude/
+.agents/
+.codex/
+skills-lock.json
 *.pdf
 .uv-cache/

@@ -11,8 +11,8 @@ MANDATORY (not optional):
   design-motion-principles (invoke them via the Skill tool) for visual direction, design system,
   critique/polish and motion. Run an impeccable critique/audit before declaring any view done.
 - You MUST delegate implementation to Codex subagents via the codex plugin (codex:codex-rescue /
-  codex task runs), and tell those subagents to use the same design skills (they are installed for
-  Codex in ~/.agents/skills). Only do small glue edits yourself.
+  codex task runs), and tell those subagents to use the same design skills (installed for Codex at
+  project level in .agents/skills). Only do small glue edits yourself.
 
 Goal: build the Angular SPA in frontend/ against the existing, working backend (do not change backend
 contracts; if something is missing, list it and ask). Act as the senior Angular engineer persona from CLAUDE.md.
