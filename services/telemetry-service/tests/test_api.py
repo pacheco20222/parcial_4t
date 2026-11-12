@@ -134,11 +134,13 @@ async def test_threshold_api_invalid(setup):
     assert response.status_code == 422
 
 
-async def test_public_nulls_and_rate_limit(setup):
+async def test_public_thresholds_after_patch_nulls_and_rate_limit(setup):
     client, db, redis, _ = setup
+    point = db.get.return_value
     result = MagicMock()
-    result.mappings.return_value.all.return_value = [
+    result.mappings.return_value.all.side_effect = lambda: [
         {
+            **vars(point),
             "id": "P01",
             "name": "Simulado",
             "zone": "Centro",
@@ -153,7 +155,24 @@ async def test_public_nulls_and_rate_limit(setup):
     ]
     db.execute.return_value = result
     response = await client.get("/public/points", headers={"X-Forwarded-For": "untrusted"})
-    assert response.status_code == 200 and response.json()[0]["waterDepthCm"] is None
+    assert response.status_code == 200
+    assert response.json() == [{
+        "id": "P01", "name": "Simulado", "zone": "Centro", "lat": 20.97, "lon": -89.62,
+        "status": "NoData", "simulated": True, "waterDepthCm": None, "updatedAt": None,
+        "lastUpdateAgeSeconds": None, "watchThresholdCm": 15.0, "alertThresholdCm": 25.0,
+    }]
+    thresholds = {"watchThresholdCm": 20.25, "alertThresholdCm": 30.75}
+    patched = await client.patch(
+        "/points/P01/thresholds",
+        json=thresholds,
+        headers={"X-Requested-With": "XMLHttpRequest", "Authorization": f"Bearer {token(role='Supervisor')}"},
+    )
+    assert patched.status_code == 200
+    db.commit.assert_awaited_once()
+    refreshed = await client.get("/public/points")
+    assert refreshed.status_code == 200
+    assert refreshed.json() == [{**response.json()[0], **thresholds}]
+    assert db.execute.await_count == 2
     await redis.set("rl:telemetry:public:127.0.0.1", 60, ex=60)
     assert (await client.get("/public/points")).status_code == 429
 

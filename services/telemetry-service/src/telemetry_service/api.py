@@ -34,6 +34,8 @@ class PublicPoint(DTO):
     lon: float
     status: str
     simulated: bool
+    watch_threshold_cm: float
+    alert_threshold_cm: float
     water_depth_cm: float | None
     updated_at: datetime | None
     last_update_age_seconds: float | None

@@ -59,7 +59,9 @@ mount secrets read-only and supply `/tmp` tmpfs if infrastructure needs it.
 Gateway strips `/api/telemetry`; Uvicorn `root_path` carries that prefix.
 
 - `GET /healthz`: public liveness only; `GET /readyz`: DB + Redis readiness.
-- `GET /public/points`: public status, last valid depth and age; 60 requests/min/IP.
+- `GET /public/points`: public status, last valid depth and age, plus current
+  `watchThresholdCm` and `alertThresholdCm` (floats read from DB on each request,
+  reflecting successful threshold PATCHes immediately); 60 requests/min/IP.
 - Operator+: `GET /points/{id}/readings?from=...&to=...&bucket=5m`
   (aware timestamps, default six hours, maximum seven days; `1m|5m|15m|1h`),
   `GET /kpis` (10-second cache), `GET /points/{id}/forecast` (next 24 hours).
