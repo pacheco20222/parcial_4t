@@ -1,0 +1,23 @@
+{
+  "/api": {
+    "target": "https://localhost:8443",
+    "secure": false,
+    "ws": true,
+    "changeOrigin": true
+  },
+  "/hubs": {
+    "target": "https://localhost:8443",
+    "secure": false,
+    "ws": true,
+    "changeOrigin": true,
+    "headers": {
+      "Origin": "https://localhost:8443"
+    }
+  },
+  "/soc": {
+    "target": "https://localhost:8443",
+    "secure": false,
+    "ws": true,
+    "changeOrigin": true
+  }
+}

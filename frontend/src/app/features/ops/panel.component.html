@@ -1,0 +1,53 @@
+<main class="panel" aria-label="Panel de operaciones">
+  <section class="ladder-section" aria-labelledby="ladder-heading">
+    <h1 id="ladder-heading">Escalera de alerta <small>{{ points.points().length }} puntos</small></h1>
+    @if (points.loading()) { <p class="empty">Cargando puntos…</p> }
+    @if (points.error()) { <p class="error">No se pudieron actualizar los puntos. <button type="button" (click)="points.reload()">Reintentar</button></p> }
+    <div class="ladder">
+      @for (entry of ladderEntries(); track entry.key) {
+        @switch (entry.kind) {
+          @case ('heading') {
+            <h2 class="signal-field rung-heading" [attr.data-status]="entry.status"><span><app-icon [name]="entry.status" />{{ statusLabel(entry.status) }}</span><small>{{ entry.count }}</small></h2>
+          }
+          @case ('point') {
+            <a class="signal-field point-row" [attr.data-point-id]="entry.point.id" [attr.data-status]="entry.status" [routerLink]="['/ops/puntos', entry.point.id]" [attr.aria-label]="pointLabel(entry.point) + ' · ' + statusLabel(entry.status) + ' · ' + depth(entry.point)"><span>{{ pointLabel(entry.point) }}</span><strong>{{ depth(entry.point) }}</strong><span class="point-highlight" aria-hidden="true"></span></a>
+          }
+          @case ('empty') { <p class="signal-field rung-empty" [attr.data-status]="entry.status">Sin puntos en este nivel</p> }
+          @case ('tail') { <div class="signal-field rung-tail" [attr.data-status]="entry.status" [class.has-points]="entry.hasPoints" aria-hidden="true"></div> }
+        }
+      }
+    </div>
+  </section>
+  <section class="kpis" aria-label="Indicadores de operación">
+    @if (kpis.loading()) { <p class="kpi-notice">Cargando indicadores…</p> }
+    @if (kpis.error()) { <p class="kpi-notice error">{{ kpis.error() }} <button type="button" (click)="kpis.reload()">Reintentar</button></p> }
+    <article class="kpi" [class.bad]="points.worstStatus() === 'Alert'"><h2>Tirante máx · 60 min</h2><strong>{{ (kpis.telemetry()?.maxDepthCm ?? null) === null ? '—' : depthValue(kpis.telemetry()!.maxDepthCm!) }}</strong><p>{{ (kpis.telemetry()?.maxDepthCm ?? null) === null ? 'sin datos aún' : 'últimos 60 min' }}</p></article>
+    <article class="kpi"><h2>Lluvia 60 min</h2><strong>{{ number(kpis.telemetry()?.rainLast60minMm) }}@if ((kpis.telemetry()?.rainLast60minMm ?? null) !== null) { <span>mm</span> }</strong><p>{{ (kpis.telemetry()?.rainLast60minMm ?? null) === null ? 'sin datos aún' : 'máx. por punto' }}</p></article>
+    <article class="kpi" [class.bad]="(kpis.ops()?.overdue ?? 0) > 0"><h2>Órdenes abiertas</h2><strong>{{ number(kpis.ops()?.openOrders) }}</strong><p [class.error]="(kpis.ops()?.overdue ?? 0) > 0">{{ kpis.ops() ? kpis.ops()!.overdue + ' vencidas' : 'sin datos aún' }}</p></article>
+    <article class="kpi"><h2>Alerta → en sitio</h2><strong>{{ number(kpis.ops()?.avgMinutesAlertToOnSiteLast7Days) }}@if ((kpis.ops()?.avgMinutesAlertToOnSiteLast7Days ?? null) !== null) { <span>min</span> }</strong><p>{{ (kpis.ops()?.avgMinutesAlertToOnSiteLast7Days === null || kpis.ops()?.avgMinutesAlertToOnSiteLast7Days === undefined) ? 'sin datos aún' : 'prom. 7 días' }}</p></article>
+    <article class="kpi" [class.bad]="(kpis.telemetry()?.dataFreshnessSeconds ?? 0) > 180"><h2>Frescura</h2><strong>{{ number(kpis.telemetry()?.dataFreshnessSeconds) }}@if ((kpis.telemetry()?.dataFreshnessSeconds ?? null) !== null) { <span>s</span> }</strong><p>{{ (kpis.telemetry()?.dataFreshnessSeconds ?? null) === null ? 'sin datos aún' : 'último dato' }}</p></article>
+  </section>
+  <div class="activity-column">
+  <section class="alerts-section" aria-labelledby="alerts-heading">
+    <h2 id="alerts-heading">Alertas activas <small>{{ alerts.alerts().length }}</small></h2>
+    <div class="feed">
+      @if (alerts.loading()) { <p class="empty">Cargando alertas…</p> }
+      @if (alerts.error()) { <p class="empty error">{{ alerts.error() }} <button type="button" (click)="alerts.reload()">Reintentar</button></p> }
+      @for (alert of alerts.alerts(); track alert.id) {
+        <a class="alert-row" [routerLink]="['/ops/alertas']"><span class="alert-icon" [attr.data-status]="alertStatus(alert.level)"><app-icon [name]="alertStatus(alert.level)" /></span><span><b>{{ pointLabel({id: alert.pointId, zone: alert.zone}) }} · {{ statusLabel(alertStatus(alert.level)) }}</b><span class="detail">{{ displayText(alert.reason) }}</span></span><time [attr.datetime]="alert.openedAt">{{ age(alert.openedAt) }}</time></a>
+      } @empty { @if (!alerts.loading() && !alerts.error()) { <p class="empty">No hay alertas activas.</p> } }
+    </div>
+  </section>
+  <section class="orders-section" aria-labelledby="orders-heading">
+    <h2 id="orders-heading">Órdenes de trabajo <small>{{ openOrders().length }} abiertas</small></h2>
+    <div class="feed">
+      @if (workOrders.loading()) { <p class="empty">Cargando órdenes…</p> }
+      @if (workOrders.error()) { <p class="empty error">{{ workOrders.error() }} <button type="button" (click)="workOrders.reload()">Reintentar</button></p> }
+      @for (order of openOrders(); track order.id) {
+        <a class="order-row" routerLink="/ops/ordenes"><b class="folio">{{ order.folio }}</b><span class="sla" [class.error]="overdue(order.slaDueAt)">{{ formatSla(order.slaDueAt, points.now()) }}</span><span class="order-title">{{ displayText(order.title, points.points(), order.pointId) }}</span><span class="order-indicators"><app-order-priority [priority]="order.priority" /><app-order-state [status]="order.status" /></span></a>
+      } @empty { @if (!workOrders.loading() && !workOrders.error()) { <p class="empty">No hay órdenes abiertas.</p> } }
+    </div>
+  </section>
+  </div>
+  <section class="map-section" aria-labelledby="map-heading"><h2 id="map-heading">Mapa de puntos <small>Mérida, Yucatán</small></h2><app-map [points]="points.points()" (select)="selectPoint($event)" /><a routerLink="/ops/mapa" class="map-link">Abrir vista de mapa</a></section>
+</main>

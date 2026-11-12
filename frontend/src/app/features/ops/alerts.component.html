@@ -1,0 +1,27 @@
+<main class="view">
+  <header class="view-header"><h1>Alertas</h1><a routerLink="/ops/panel">Volver al panel</a></header>
+  <div class="filters">
+    <label>Estado<select name="status" [(ngModel)]="status" (ngModelChange)="filtersChanged()"><option value="Open">Abiertas</option><option value="Closed">Cerradas</option><option value="">Todos</option></select></label>
+    <label>Nivel<select name="level" [ngModel]="level()" (ngModelChange)="level.set($event)"><option value="">Todos los niveles</option><option value="Watch">Vigilancia</option><option value="Alert">Alerta</option><option value="DataGap">Sin datos</option></select></label>
+    <label>Punto<select name="point" [(ngModel)]="pointId" (ngModelChange)="filtersChanged()"><option value="">Todos los puntos</option>@for (point of points.points(); track point.id) {<option [value]="point.id">{{pointLabel(point)}}</option>}</select></label>
+  </div>
+  @if (level()) {<p class="muted">Coinciden {{visible().length}} de {{items().length}} alertas en esta página. El nivel filtra esta página; usa Siguiente para consultar más.</p>}
+  <p class="feedback" role="status">{{feedback()}}</p>
+  @if (error()) {<p class="error" role="alert">{{error()}} <button type="button" (click)="reload()">Reintentar</button></p>}
+  @if (loading()) {<div class="skeleton" aria-busy="true">Cargando alertas…</div>}
+  @else {
+    @if (visible().length) {
+      <div class="table-wrap"><table class="data-table"><caption class="sr-only">Alertas, página {{offset()/50+1}}</caption><thead><tr><th scope="col">Punto</th><th scope="col">Nivel</th><th scope="col">Motivo</th><th scope="col">Apertura</th><th scope="col">Estado y acciones</th></tr></thead><tbody>
+        @for (alert of visible();track alert.id) {
+          <tr><td data-label="Punto"><a [routerLink]="['/ops/puntos',alert.pointId]">{{pointLabel({id:alert.pointId,zone:alert.zone})}}</a></td>
+            <td data-label="Nivel"><span [class]="'status status-'+shape(alert.level)"><app-icon [name]="shape(alert.level)"/>{{alertLevelLabel(alert.level)}}</span></td>
+            <td data-label="Motivo">{{displayText(alert.reason)}} @if(alert.depthCm !== null){<small>{{formatDepth(alert.depthCm)}}</small>}</td>
+            <td data-label="Apertura"><time [attr.datetime]="alert.openedAt">{{alert.openedAt|date:'dd/MM/yy HH:mm'}}</time></td>
+            <td data-label="Estado y acciones">{{alertStatusLabel(alert.status)}} @if(alert.status==='Open' && auth.hasRole('Operator')) {<button type="button" [disabled]="pending().has(alert.id)" (click)="close(alert)">{{pending().has(alert.id)?'Cerrando…':'Cerrar alerta'}}</button>} @if(actionErrors()[alert.id]){<p class="error" role="alert">{{actionErrors()[alert.id]}}</p>}</td>
+          </tr>
+        }
+      </tbody></table></div>
+    } @else if (!error()) {<p class="empty">{{status==='Open'&&!level()&&!pointId?'Sin alertas abiertas. El panel avisará cuando un punto cambie de estado.':'Sin alertas con estos filtros en esta página. Cambia los filtros o consulta otra página.'}}</p>}
+  }
+  <nav class="pagination" aria-label="Páginas de alertas"><button type="button" [disabled]="offset()===0||loading()" (click)="changePage(-1)">Anterior</button><span>Página {{offset()/50+1}}</span><button type="button" [disabled]="!hasNext()||loading()" (click)="changePage(1)">Siguiente</button></nav>
+</main>

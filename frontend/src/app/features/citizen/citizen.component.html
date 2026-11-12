@@ -1,0 +1,33 @@
+<header class="public-header"><a class="wordmark" routerLink="/"><span class="brand-mark"></span>Alerta Pluvial Mérida</a><a routerLink="/login">Acceso para personal</a></header>
+<app-status-band />
+<main class="citizen-layout">
+  <section class="points-section" aria-labelledby="points-heading">
+    <h1 id="points-heading">Estado de los puntos</h1>
+    <p>Consulta el nivel de agua y la última actualización antes de salir.</p>
+    @if (points.loading()) { <p class="empty">Cargando puntos de monitoreo…</p> }
+    @if (points.error()) { <p class="error">No se pudieron cargar los puntos. <button type="button" (click)="points.reload()">Reintentar</button></p> }
+    <app-map [points]="points.points()" [selectedId]="selectedId()" (select)="selectedId.set($event)" />
+    <ul class="point-list">
+      @for (point of points.points(); track point.id) {
+        <li><button type="button" class="point-button" [class.selected]="selectedId() === point.id" [attr.aria-pressed]="selectedId() === point.id" (click)="selectedId.set(point.id)">
+          <span><b>{{ pointLabel(point) }}</b><small>{{ point.zone }} · {{ age(point) }}</small></span>
+          <span class="point-status" [attr.data-status]="point.status"><app-icon [name]="point.status" />{{ statusLabel(point.status) }}</span><strong>{{ depth(point) }}</strong>
+        </button></li>
+      } @empty { @if (!points.loading() && !points.error()) { <li class="empty">No hay puntos de monitoreo disponibles.</li> } }
+    </ul>
+  </section>
+  <section class="report-section" aria-labelledby="report-heading">
+    <h2 id="report-heading">Reporta un problema</h2><p>No pedimos datos personales.</p>
+    @if (folio()) { <div #feedback tabindex="-1" class="success"><app-icon name="check" /><div><b>Reporte recibido</b><p>Guarda tu folio: <strong>{{ folio() }}</strong></p></div></div> }
+    <form (ngSubmit)="send()" novalidate>
+      <label for="report-point">Punto cercano (opcional)</label><select id="report-point" name="point" [(ngModel)]="pointId"><option value="">Sin punto específico</option>@for (point of points.points(); track point.id) { <option [value]="point.id">{{ pointLabel(point) }}</option> }</select>
+      <label for="report-category">Tipo de problema</label><select id="report-category" name="category" [(ngModel)]="category" required [attr.aria-invalid]="submitted() && !category" aria-describedby="category-error"><option value="">Selecciona una opción</option>@for (item of categories; track item.id) { <option [value]="item.id">{{ item.label }}</option> }</select>
+      @if (submitted() && !category) { <p class="error" id="category-error">Selecciona el tipo de problema.</p> }
+      <label for="report-description">Describe lo que observas</label><textarea id="report-description" name="description" [(ngModel)]="description" maxlength="500" rows="5" required [attr.aria-invalid]="submitted() && !description.trim()" aria-describedby="description-help description-error"></textarea>
+      <small id="description-help">No incluyas nombres, teléfonos ni direcciones personales. {{ description.length }}/500</small>
+      @if (submitted() && !description.trim()) { <p class="error" id="description-error">Describe el problema para enviar tu reporte.</p> }
+      @if (error()) { <p #feedback tabindex="-1" class="error">{{ error() }}</p> }
+      <button class="primary" type="submit" [disabled]="sending()">{{ sending() ? 'Enviando reporte…' : 'Enviar reporte' }}</button>
+    </form>
+  </section>
+</main>

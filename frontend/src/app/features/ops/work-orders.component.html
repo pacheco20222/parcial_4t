@@ -1,0 +1,65 @@
+<main class="view">
+  <div class="view-header"><h1>Órdenes de trabajo</h1><button type="button" [disabled]="store.loading()" (click)="store.reload()">{{store.loading() ? 'Actualizando…' : 'Actualizar órdenes'}}</button></div>
+  <div class="status-tabs" role="group" aria-label="Estado de las órdenes">@for(status of columns;track status){<button type="button" [attr.aria-pressed]="mobileStatus()===status" (click)="mobileStatus.set(status)">{{orderStatusLabel(status)}} <span>{{rows(status).length}}</span></button>}</div>
+  <details class="filters-actions" [open]="!compact()"><summary>Filtros y acciones</summary>
+  <div class="filters">
+    <label>Prioridad<select [ngModel]="priority()" (ngModelChange)="priority.set($event); applyFilters()"><option value="">Todas</option>@for (value of priorities; track value) {<option [value]="value">{{priorityLabel(value)}}</option>}</select></label>
+    <label>Punto<select [ngModel]="pointId()" (ngModelChange)="pointId.set($event); applyFilters()"><option value="">Todos</option>@for (point of points.points(); track point.id) {<option [value]="point.id">{{pointLabel(point)}}</option>}</select></label>
+    <label class="checkbox-label"><input type="checkbox" [ngModel]="overdueOnly()" (ngModelChange)="overdueOnly.set($event); applyFilters()">Solo vencidas</label>
+  </div>
+  @if (auth.hasRole('Supervisor')) {
+    <details class="create-order"><summary>Crear orden</summary>
+      <form (ngSubmit)="create()" class="create-fields">
+        <label>Punto<select name="newPoint" [(ngModel)]="newPoint" required><option value="">Selecciona un punto</option>@for(point of points.points();track point.id){<option [value]="point.id">{{pointLabel(point)}}</option>}</select></label>
+        <label>Título<input name="newTitle" [(ngModel)]="newTitle" required maxlength="200"></label>
+        <label>Prioridad<select name="newPriority" [(ngModel)]="newPriority">@for(value of priorities;track value){<option [value]="value">{{priorityLabel(value)}}</option>}</select></label>
+        <button [disabled]="!!actions.pending()">{{actions.pending()==='create'?'Creando…':'Crear orden'}}</button>
+      </form>
+      @if(createError()){<p class="error" role="alert">{{createError()}}</p>}
+      @if(activeAction()==='create' && actions.error()){<p class="error" role="alert">{{actions.error()}}</p>}
+    </details>
+    @if(crewsError()){<p class="error" role="alert">{{crewsError()}} <button type="button" (click)="loadCrews()">Reintentar cuadrillas</button></p>}
+    @if(moreCrews()){<button type="button" (click)="loadCrews(true)" [disabled]="crewsLoading()">{{crewsLoading()?'Cargando…':'Cargar más cuadrillas'}}</button>}
+  }
+  </details>
+  <p class="feedback" role="status">{{actions.success()}}</p>
+  @if(detachedError()){<p class="error" role="alert">{{actions.error()}}</p>}
+  @if(store.error()){<p class="error" role="alert">{{store.error()}}</p>}
+  @if(store.loading() && !store.orders().length){<div class="board-skeleton" aria-busy="true" aria-label="Cargando órdenes"><div></div><div></div><div></div><div></div></div>}
+
+  <div class="board">
+    @for(status of columns;track status){
+      <section class="column" [class.mobile-hidden]="mobileStatus()!==status" [attr.aria-label]="orderStatusLabel(status)">
+        <h2 class="column-heading"><app-order-state [status]="status"/> <span>{{rows(status).length}}</span></h2>
+        @for(order of rows(status);track order.id){<ng-container [ngTemplateOutlet]="card" [ngTemplateOutletContext]="{$implicit:order}"/>}
+        @empty{@if(!store.loading() && !store.error()){<p class="empty-column">Sin órdenes con este estado y estos filtros.</p>}}
+      </section>
+    }
+  </div>
+  @if(store.hasMore()){<button type="button" (click)="store.loadMore()" [disabled]="store.loading()">{{store.loading()?'Cargando…':'Cargar más órdenes'}}</button>}
+  <details class="archive"><summary>Cerradas / canceladas ({{closed().length}})</summary><div class="closed-list">@for(order of closed();track order.id){<ng-container [ngTemplateOutlet]="card" [ngTemplateOutletContext]="{$implicit:order}"/>}@empty{<p>Sin órdenes cerradas o canceladas con estos filtros.</p>}</div></details>
+</main>
+<ng-template #card let-order>
+  <article class="order" [class.overdue]="overdue(order)">
+    <div class="order-meta"><strong>{{order.folio}}</strong><app-order-priority [priority]="order.priority"/></div>
+    <h3>{{displayText(order.title,points.points(),order.pointId)}}</h3>
+    <a [routerLink]="['/ops/puntos',order.pointId]">{{pointName(order.pointId)}}</a>
+    <p class="crew-name">{{crewName(order.crewId)}}</p>
+    <p class="order-state"><app-order-state [status]="order.status"/></p>
+    @if(slaTime(order)!==null){
+      <div class="sla" [class.expired]="overdue(order)"><span>{{slaSummary(order)}}</span><progress max="1" [value]="slaFraction(order,slaTime(order)!)" [attr.aria-label]="slaSummary(order)"></progress></div>
+    } @else {<p class="muted">{{order.status==='Cancelled'?'Orden cancelada; seguimiento de plazo finalizado.':'Sin fecha de resolución para calcular el plazo.'}}</p>}
+    @if(order.closedAt || order.resolvedAt){<p class="muted">{{order.closedAt || order.resolvedAt | date:'dd/MM/yy HH:mm'}}</p>}
+    @if(auth.hasRole('Supervisor') && order.status==='Open'){
+      <label [for]="'crew-'+order.id">Asignar cuadrilla</label><select [id]="'crew-'+order.id" [(ngModel)]="selectedCrew[order.id]" [disabled]="!!actions.pending() || crewsLoading()"><option [ngValue]="undefined">Selecciona cuadrilla</option>@for(crew of crews();track crew.id){@if(crew.available){<option [value]="crew.id">{{crew.name}} · {{crew.zone}}</option>}}</select>
+      @if(!crewsLoading() && !crewsError() && !availableCrews().length){<p class="muted">Sin cuadrillas disponibles. <a routerLink="/ops/cuadrillas">Revisar cuadrillas</a>.</p>}
+      <button type="button" (click)="assign(order)" [disabled]="!!actions.pending() || !selectedCrew[order.id]">{{actions.pending()===order.id?'Guardando…':'Asignar'}}</button>
+      <details class="cancel"><summary>Cancelar orden</summary><label [for]="'reason-'+order.id">Motivo de cancelación</label><textarea [id]="'reason-'+order.id" [(ngModel)]="cancelReason[order.id]" maxlength="500" rows="2"></textarea><button type="button" (click)="transition(order,'Cancelled')" [disabled]="!!actions.pending() || !cancelReason[order.id]?.trim()">{{actions.pending()===order.id?'Guardando…':'Cancelar'}}</button></details>
+    }
+    @if(can(order,'InProgress')){<button type="button" (click)="transition(order,'InProgress')" [disabled]="!!actions.pending()">{{actions.pending()===order.id?'Guardando…':'Iniciar (en sitio)'}}</button>}
+    @if(can(order,'Resolved')){<button type="button" (click)="transition(order,'Resolved')" [disabled]="!!actions.pending()">{{actions.pending()===order.id?'Guardando…':'Marcar resuelta'}}</button>}
+    @if(can(order,'Closed')){<button type="button" (click)="transition(order,'Closed')" [disabled]="!!actions.pending()">{{actions.pending()===order.id?'Guardando…':'Cerrar'}}</button>}
+    @if(order.cancelReason){<p>Motivo: {{order.cancelReason}}</p>}
+    @if(activeAction()===order.id && actions.error()){<p class="error" role="alert">{{actions.error()}}</p>}
+  </article>
+</ng-template>

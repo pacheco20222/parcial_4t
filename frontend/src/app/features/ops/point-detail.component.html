@@ -1,0 +1,114 @@
+<main>
+<a routerLink="/ops/panel" class="back">Volver al panel</a>
+@if (point(); as point) {
+  <header class="point-header">
+    <div><h1 [attr.aria-description]="point.name">{{ pointLabel(point) }}</h1><p>Zona {{ point.zone }}</p></div>
+    <span class="point-state" [class]="'point-state status-' + point.status"><app-icon [name]="point.status"/>{{ statusLabel(point.status) }}</span>
+    <div class="current-depth"><strong>{{ point.status === 'NoData' ? 'Sin datos' : formatDepth(point.waterDepthCm) }}</strong><span>Tirante actual · {{ formatAge(points.age(point)) }}</span></div>
+  </header>
+
+  <section class="history" aria-labelledby="history-heading" [attr.aria-busy]="loading()">
+    <div class="section-heading"><h2 id="history-heading">Tirante y lluvia</h2><div class="ranges" role="group" aria-label="Intervalo de lecturas">
+      <button type="button" [attr.aria-pressed]="range() === 1" (click)="selectRange(1)">1 h</button>
+      <button type="button" [attr.aria-pressed]="range() === 6" (click)="selectRange(6)">6 h</button>
+      <button type="button" [attr.aria-pressed]="range() === 24" (click)="selectRange(24)">24 h</button>
+    </div></div>
+    <div class="axis-labels"><span>Tirante: 0–{{ depthMaximum() }} cm</span><span>Lluvia: 0–{{ rainMaximum() }} mm / 5 min</span></div>
+    @if (loading() && !readings().length) { <div class="chart-skeleton" role="status">Cargando lecturas…</div> }
+    @else {
+      <div class="chart-frame">
+      <svg class="history-chart" preserveAspectRatio="none" viewBox="54 0 792 290" role="img" [attr.aria-label]="chartSummary()">
+        @for (tick of depthTicks(); track tick) {
+          <line class="grid" x1="54" x2="846" [attr.y1]="chartY(tick, depthMaximum())" [attr.y2]="chartY(tick, depthMaximum())"/>
+        }
+        @for (bar of rainBars(); track $index) {
+          <rect class="rain" [attr.x]="bar.x - 2" [attr.y]="bar.y" width="4" [attr.height]="baseline - bar.y"><title>{{ date(bar.at) }}: {{ bar.value }} mm</title></rect>
+        }
+        @if (point.watchThresholdCm !== undefined) {
+          <line class="threshold watch" x1="54" x2="846" [attr.y1]="chartY(point.watchThresholdCm, depthMaximum())" [attr.y2]="chartY(point.watchThresholdCm, depthMaximum())"/>
+        }
+        @if (point.alertThresholdCm !== undefined) {
+          <line class="threshold alert" x1="54" x2="846" [attr.y1]="chartY(point.alertThresholdCm, depthMaximum())" [attr.y2]="chartY(point.alertThresholdCm, depthMaximum())"/>
+        }
+        <path class="depth-line" [attr.d]="path()"/>
+        @for (dot of depthDots(); track $index) {
+          <circle class="depth-dot" [attr.cx]="dot.x" [attr.cy]="dot.y" r="3"><title>{{ date(dot.at) }}: {{ formatDepth(dot.value) }}</title></circle>
+        }
+      </svg>
+      <div class="chart-axis y-left" aria-hidden="true">@for(tick of depthTicks();track tick;let i=$index){<span [class.middle-tick]="i===1" [style.top.%]="chartY(tick,depthMaximum()) / 290 * 100">{{ number(tick) }}</span>}</div>
+      <div class="chart-axis y-right" aria-hidden="true">@for(tick of depthTicks();track tick;let i=$index){<span [class.middle-tick]="i===1" [style.top.%]="chartY(tick,depthMaximum()) / 290 * 100">{{ number(tick / depthMaximum() * rainMaximum()) }}</span>}</div>
+      <div class="chart-times" aria-hidden="true">@for(tick of timeTicks();track tick;let i=$index){<span [class.middle-tick]="i===1">{{ time(tick) }}</span>}</div>
+      </div>
+    }
+    <div class="legend"><span><i class="depth-key"></i>Tirante</span><span><i class="rain-key"></i>Lluvia observada</span>
+      @if (point.watchThresholdCm !== undefined) { <span><i class="watch-key"></i>Vigilancia: {{ formatDepth(point.watchThresholdCm) }}</span> }
+      @if (point.alertThresholdCm !== undefined) { <span><i class="alert-key"></i>Alerta: {{ formatDepth(point.alertThresholdCm) }}</span> }
+    </div>
+    @if (!loading() && !readings().length && !readingError()) { <p class="muted">Sin lecturas en este intervalo. Cambia el rango o espera la siguiente transmisión.</p> }
+    @if (readingError()) { <div class="inline-error"><p class="error" role="alert">{{ readingError() }}</p><button type="button" (click)="loadReadings()" [disabled]="loading()">Reintentar lecturas</button></div> }
+    <div class="sr-only"><table><caption>Lecturas de {{ pointLabel(point) }} durante las últimas {{ range() }} horas</caption><thead><tr><th scope="col">Fecha</th><th scope="col">Tirante (cm)</th><th scope="col">Lluvia (mm / 5 min)</th></tr></thead><tbody>
+      @for (row of readings(); track $index) { <tr><th scope="row">{{ date(row.capturedAt) }}</th><td>{{ formatDepth(row.waterDepthCm) }}</td><td>{{ number(row.rainMm5min) }}</td></tr> }
+    </tbody></table></div>
+  </section>
+
+  <section class="forecast" aria-labelledby="forecast-heading" [attr.aria-busy]="forecastLoading()">
+    <h2 id="forecast-heading">Pronóstico Open-Meteo</h2><p class="muted">Lluvia por hora para las próximas 24 horas. Es una estimación, no una lectura del sensor.</p>
+    <div class="axis-labels"><span>Precipitación: 0–{{ forecastMaximum() }} mm / h</span><span>Próximas 24 h</span></div>
+    @if (forecastLoading() && !forecast().length) { <div class="chart-skeleton" role="status">Cargando pronóstico…</div> }
+    @else if (forecast().length) {
+      <div class="chart-frame">
+      <svg class="forecast-chart" preserveAspectRatio="none" viewBox="54 0 792 290" role="img" [attr.aria-label]="'Pronóstico Open-Meteo para ' + pointLabel(point) + ': ' + forecast().length + ' estimaciones de lluvia por hora, en milímetros.'">
+        <defs><pattern id="point-forecast-hatch" patternUnits="userSpaceOnUse" width="8" height="8"><path d="M-2 2 2-2M0 8 8 0m-2 10 4-4" class="hatch"/></pattern></defs>
+        @for (tick of [0, forecastMaximum() / 2, forecastMaximum()]; track tick) {
+          <line class="grid" x1="54" x2="846" [attr.y1]="chartY(tick, forecastMaximum())" [attr.y2]="chartY(tick, forecastMaximum())"/>
+        }
+        @for (bar of forecastBars(); track $index) {
+          <rect class="forecast-bar" [attr.x]="bar.x - 12" [attr.y]="bar.y" width="24" [attr.height]="baseline - bar.y"><title>{{ date(bar.at) }}: {{ bar.value }} mm</title></rect>
+        }
+      </svg>
+      <div class="chart-axis y-left" aria-hidden="true">@for(tick of [0,forecastMaximum()/2,forecastMaximum()];track tick;let i=$index){<span [class.middle-tick]="i===1" [style.top.%]="chartY(tick,forecastMaximum()) / 290 * 100">{{ number(tick) }}</span>}</div>
+      <div class="chart-times" aria-hidden="true"><span>{{ time(forecastFrom()) }}</span><span class="middle-tick">{{ time(forecastFrom()+12*3600000) }}</span><span>{{ time(forecastFrom()+24*3600000) }}</span></div>
+      </div>
+    }
+    @else if (!forecastError()) { <div class="forecast-empty"><p>Sin pronóstico disponible. Las lecturas del sensor siguen disponibles arriba.</p></div> }
+    @if (forecastError()) { <div class="inline-error"><p class="error" role="alert">{{ forecastError() }}</p><button type="button" (click)="loadForecast()" [disabled]="forecastLoading()">Reintentar pronóstico</button></div> }
+    <div class="sr-only"><table><caption>Pronóstico Open-Meteo de lluvia para las próximas 24 horas</caption><thead><tr><th scope="col">Fecha</th><th scope="col">Lluvia estimada (mm)</th></tr></thead><tbody>
+      @for (row of forecast(); track $index) { <tr><th scope="row">{{ date(row.forecastFor) }}</th><td>{{ number(row.precipMm) }}</td></tr> }
+    </tbody></table></div>
+  </section>
+
+  @if (auth.hasRole('Supervisor')) {
+    <section class="threshold-editor" aria-labelledby="threshold-heading"><h2 id="threshold-heading">Umbrales de alerta</h2>
+      <p id="threshold-hint">En centímetros: vigilancia mayor que 0, alerta mayor que vigilancia y hasta 150.</p>
+      <form (ngSubmit)="saveThresholds()" class="threshold-form" aria-describedby="threshold-hint">
+        <label>Vigilancia (cm)<input name="watchThreshold" type="number" min="0" max="150" step="any" required [(ngModel)]="watchThreshold" [disabled]="savingThresholds()" [attr.aria-invalid]="thresholdSubmitted() && !validThresholds(watchThreshold, alertThreshold)" aria-describedby="threshold-validation"/></label>
+        <label>Alerta (cm)<input name="alertThreshold" type="number" min="0" max="150" step="any" required [(ngModel)]="alertThreshold" [disabled]="savingThresholds()" [attr.aria-invalid]="thresholdSubmitted() && !validThresholds(watchThreshold, alertThreshold)" aria-describedby="threshold-validation"/></label>
+        <button type="submit" [disabled]="savingThresholds()">{{ savingThresholds() ? 'Guardando…' : 'Guardar umbrales' }}</button>
+      </form>
+      <p id="threshold-validation" class="error">@if (thresholdSubmitted() && !validThresholds(watchThreshold, alertThreshold)) { Usa valores válidos: 0 &lt; vigilancia &lt; alerta ≤ 150 cm. }</p>
+      @if (thresholdError()) { <p class="error" role="alert">{{ thresholdError() }}</p> }
+      <p role="status" class="feedback">{{ thresholdFeedback() }}</p>
+    </section>
+  }
+
+  <div class="activity">
+    <section aria-labelledby="alerts-heading"><div class="section-heading"><h2 id="alerts-heading">Alertas abiertas</h2><a [routerLink]="['/ops/alertas']" [queryParams]="{pointId: point.id}">Ver alertas</a></div>
+      @if (alerts.loading()) { <p class="list-skeleton">Cargando alertas…</p> }
+      @if (alerts.error()) { <p class="error" role="alert">{{ alerts.error() }}</p><button type="button" (click)="loadAlerts()">Reintentar alertas</button> }
+      @for (alert of openAlerts(); track alert.id) {
+        <article class="activity-row"><span class="activity-status" [class]="'activity-status status-' + alertStatus(alert.level)"><app-icon [name]="alertStatus(alert.level)"/>{{ alertLevelLabel(alert.level) }}</span><p>{{ displayText(alert.reason, points.points()) }}</p><small>{{ date(alert.openedAt) }}</small></article>
+      } @empty { @if (!alerts.loading() && !alerts.error()) { <p class="muted">Sin alertas abiertas. El panel avisará cuando el punto cambie de estado.</p> } }
+      @if (alertOffset() > 0 || moreAlerts()) { <nav class="paging" aria-label="Páginas de alertas del punto"><button type="button" [disabled]="alerts.loading() || alertOffset() === 0" (click)="loadAlerts(alertOffset() - 50)">Anteriores</button><span>Página {{ alertOffset() / 50 + 1 }}</span><button type="button" [disabled]="alerts.loading() || !moreAlerts()" (click)="loadAlerts(alertOffset() + 50)">Siguientes</button></nav> }
+    </section>
+    <section aria-labelledby="orders-heading"><div class="section-heading"><h2 id="orders-heading">Órdenes activas</h2><a [routerLink]="['/ops/ordenes']" [queryParams]="{pointId: point.id}">Ver órdenes</a></div>
+      @if (orders.loading()) { <p class="list-skeleton">Cargando órdenes…</p> }
+      @if (orders.error()) { <p class="error" role="alert">{{ orders.error() }}</p><button type="button" (click)="loadOrders()">Reintentar órdenes</button> }
+      @for (order of openOrders(); track order.id) {
+        <article class="activity-row"><a [routerLink]="['/ops/ordenes']" [queryParams]="{pointId: point.id}">{{ order.folio }}</a><p>{{ displayText(order.title, points.points(), order.pointId) }}</p><app-order-state [status]="order.status"/> <app-order-priority [priority]="order.priority"/><small [class.error]="points.now() > 0 && formatSla(order.slaDueAt, points.now()).startsWith('Vencida')">{{ formatSla(order.slaDueAt, points.now()) }}</small></article>
+      } @empty { @if (!orders.loading() && !orders.error()) { <p class="muted">Sin órdenes activas. Puedes crear una desde el tablero de órdenes.</p> } }
+      @if (orderOffset() > 0 || moreOrders()) { <nav class="paging" aria-label="Páginas de órdenes del punto"><button type="button" [disabled]="orders.loading() || orderOffset() === 0" (click)="loadOrders(orderOffset() - 50)">Anteriores</button><span>Página {{ orderOffset() / 50 + 1 }}</span><button type="button" [disabled]="orders.loading() || !moreOrders()" (click)="loadOrders(orderOffset() + 50)">Siguientes</button></nav> }
+    </section>
+  </div>
+} @else if (points.loading()) { <div class="page-skeleton" role="status">Cargando punto…</div> }
+@else { <h1>Punto no disponible</h1><p>{{ points.error() || 'No encontramos este punto. Regresa al panel para elegir otro.' }}</p><button type="button" (click)="points.reload()">Recargar puntos</button> }
+</main>

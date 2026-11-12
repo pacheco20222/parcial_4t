@@ -1,0 +1,33 @@
+<main class="view">
+  <div class="view-header"><h1>Reportes ciudadanos</h1><button type="button" (click)="reload()" [disabled]="loading()">{{loading()?'Actualizando…':'Actualizar reportes'}}</button></div>
+  <div class="filters">
+    <label>Estado<select [ngModel]="status()" (ngModelChange)="status.set($event); reload()"><option value="">Todos</option>@for(value of statuses();track value){<option [value]="value">{{reportStatusLabel(value)}}</option>}</select></label>
+    <label>Punto<select [ngModel]="pointId()" (ngModelChange)="pointId.set($event); reload()"><option value="">Todos</option>@for(point of points.points();track point.id){<option [value]="point.id">{{pointLabel(point)}}</option>}</select></label>
+  </div>
+  <p class="feedback" role="status">{{success()}}</p>
+  @if(detachedError()){<p class="error" role="alert">{{actionError()}}</p>}
+  @if(error()){<p class="error" role="alert">{{error()}}</p>}
+  @if(loading() && !reports().length){<div class="report-skeleton" aria-busy="true" aria-label="Cargando reportes"><div></div><div></div><div></div></div>}
+  <div class="report-list">
+    @for(report of visible();track report.id){
+      <article class="report">
+        <div class="report-summary"><strong>{{report.folio}}</strong><span class="report-state">{{reportStatusLabel(effectiveStatus(report))}}</span><time [attr.datetime]="report.reportedAt">{{report.reportedAt | date:'dd/MM/yy HH:mm'}}</time></div>
+        <h2>{{categoryLabel(report.category)}}</h2>
+        @if(report.pointId){<a [routerLink]="['/ops/puntos',report.pointId]">{{pointName(report.pointId)}}</a>}@else{<p class="muted">Sin punto asociado</p>}
+        <p class="description">{{report.description}}</p>
+        @if(auth.hasRole('Operator') && report.status==='Pending'){
+          <div class="actions"><button type="button" [disabled]="!!pending()" (click)="review(report,'validate')">{{pending()===report.id?'Guardando…':'Validar'}}</button><button type="button" class="secondary" [disabled]="!!pending()" (click)="review(report,'reject')">{{pending()===report.id?'Guardando…':'Rechazar'}}</button></div>
+        }
+        @if(auth.hasRole('Operator') && report.status==='Validated' && !report.linkedWorkOrderId){
+          <div class="link-order"><label [for]="'order-'+report.id">Orden abierta del mismo punto<select [id]="'order-'+report.id" [(ngModel)]="selectedOrder[report.id]" [disabled]="!!pending()"><option [ngValue]="undefined">Selecciona una orden</option>@for(order of linkableOrders(report);track order.id){<option [value]="order.id">{{order.folio}} · {{displayText(order.title,points.points(),order.pointId)}}</option>}</select></label><button type="button" (click)="link(report)" [disabled]="!!pending() || !selectedOrder[report.id]">{{pending()===report.id?'Vinculando…':'Vincular a orden'}}</button></div>
+          @if(!linkableOrders(report).length){<p class="muted">Sin órdenes abiertas para este punto. <a routerLink="/ops/ordenes">Revisar órdenes</a>.</p>}
+          @if(orders.hasMore()){<button type="button" class="secondary" (click)="orders.loadMore()" [disabled]="orders.loading()">{{orders.loading()?'Cargando…':'Cargar más órdenes disponibles'}}</button>}
+          @if(orders.error()){<p class="error" role="alert">{{orders.error()}}</p>}
+        }
+        @if(report.linkedWorkOrderId){<p>Vinculado a una orden. <a routerLink="/ops/ordenes">Ver tablero de órdenes</a></p>}
+        @if(activeAction()===report.id && actionError()){<p class="error" role="alert">{{actionError()}}</p>}
+      </article>
+    }@empty{@if(!loading() && !error()){<div class="empty-state"><h2>Sin reportes con estos filtros</h2><p>Los nuevos reportes ciudadanos aparecerán aquí. Cambia los filtros para revisar otros estados.</p></div>}}
+  </div>
+  @if(hasMore()){<button type="button" (click)="loadMore()" [disabled]="loading()">{{loading()?'Cargando…':'Cargar más reportes'}}</button>}
+</main>
