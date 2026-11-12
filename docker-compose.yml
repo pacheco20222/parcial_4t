@@ -98,6 +98,7 @@ services:
       MQTT_CA_FILE: /run/secrets/ca.crt
       JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public.pem
       OPEN_METEO_ENABLED: ${OPEN_METEO_ENABLED:-true}
+      ENFORCE_MFA: ${SECURITY_ENFORCE_MFA:-false}   # same switch as ops-service Security__EnforceMfa
       ENVIRONMENT: ${ENVIRONMENT:-prod}
       PYTHONDONTWRITEBYTECODE: "1"
     secrets: [telemetry_db_password, redis_password, mqtt_telemetry_password, ca.crt, jwt_public.pem]

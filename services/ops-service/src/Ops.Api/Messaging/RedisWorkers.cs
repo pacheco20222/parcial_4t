@@ -52,8 +52,15 @@ public sealed class StreamWorker(IConnectionMultiplexer redis, IServiceScopeFact
         }
         catch (Exception ex) when (ex is JsonException or ArgumentException)
         {
-            // Keep invalid input pending for operator investigation; never acknowledge uncommitted input.
+            // Poison message: retrying cannot fix it. Park it in a dead-letter stream for investigation, then ack.
             SecurityLog.Event(log, "stream.validation_failed");
+            await redisDb.StreamAddAsync("stream:point-status:dlq", entry.Values, maxLength: 10000, useApproximateMaxLength: true);
+            await redisDb.StreamAcknowledgeAsync("stream:point-status", "ops", entry.Id);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Transient failure (e.g. DB): leave pending for XAUTOCLAIM retry without blocking the other entries.
+            log.LogError(ex, "{event}", "stream.processing_failed");
         }
     }
 }
