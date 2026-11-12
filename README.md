@@ -8,10 +8,12 @@ SIS4415 · Segundo Parcial (Data-Driven 4.0, Units 3–4). Simulated IoT sensors
 
 | Doc | For |
 |---|---|
+| [CLAUDE.md](CLAUDE.md) / AGENTS.md | Agent instructions: personas per area, contracts, commands, workflow |
 | [project.md](project.md) | Professor's requirements + rubric (English) |
 | [architecture.md](architecture.md) | Design, all diagrams (Mermaid), rubric traceability — source for the Spanish PDF |
 | [docs/contracts.md](docs/contracts.md) | Binding cross-service conventions (secrets, networks, events, auth, logs) |
 | [docs/frontend-handoff.md](docs/frontend-handoff.md) | API + SignalR + auth guide for the Angular phase |
+| [docs/frontend-kickoff-prompt.md](docs/frontend-kickoff-prompt.md) | Ready-to-paste prompt to start the frontend session |
 | [docs/siem-rules.md](docs/siem-rules.md) | SIEM rules SR-01..07 and how to trigger them |
 | [docs/plan.md](docs/plan.md) | Build plan and status |
 | `services/*/README.md`, `simulator/README.md`, `infra/README.md`, `.github/README.md` | Per-component details |

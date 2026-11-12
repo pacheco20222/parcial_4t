@@ -88,3 +88,11 @@ On reconnect, re-fetch lists (events can be missed while offline).
 - **Operator (mobile + desktop):** KPI cards (both `/kpis`), live map, per-point chart (readings + forecast + thresholds), alerts feed, work order board with actions, report moderation.
 - **Supervisor/Admin:** assign crews, thresholds editor, users, audit log, link to SOC console `/soc/` (Grafana).
 - Must be responsive and update live **without reload** (rubric "Excelente").
+
+## Definition of done (frontend phase)
+
+- `frontend/` Angular app (latest stable Angular, standalone, strict TS); `npm ci` lockfile committed; versions pinned.
+- Production build served by Caddy (multi-stage `infra/caddy/Dockerfile` or mounted dist) with SPA fallback; CSP still strict.
+- CI: add a `frontend` job (lint, unit tests, prod build) to `.github/workflows/ci.yml` and include it in `compose-smoke`; add `npm` ecosystem for `/frontend` to `.github/dependabot.yml` (ignore majors like the others).
+- Works at 375 px and desktop; live updates without reload; Spanish UI copy; "datos simulados" disclaimer.
+- Update this file, README and docs/plan.md.
