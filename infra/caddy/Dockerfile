@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npx ng build --configuration production
 
 # Stage 2: gateway serving the SPA build.
-FROM caddy:2.10.2-alpine
+FROM caddy:2.11-alpine
 # Persistent CA/config volumes must be writable by the unprivileged gateway.
 RUN mkdir -p /data /config && chown -R 1000:1000 /data /config
 COPY --from=spa /app/dist/alerta-pluvial/browser /srv/www
