@@ -3,11 +3,15 @@
 
 Usage: python3 scripts/smoke.py [--base https://localhost:8443] [--lifecycle]
 Requires a running stack (docker compose up) and ./secrets from scripts/bootstrap.sh.
+--gate (or GATE_MODE=on) sends Basic auth (GATE_USER, default demo, + secrets/gate_password)
+on every request.
 --lifecycle also walks the first open work order through assign -> Closed.
 """
 import argparse
+import base64
 import http.cookiejar
 import json
+import os
 import pathlib
 import ssl
 import sys
@@ -17,6 +21,13 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 failures = 0
+GATE_AUTH = None
+
+
+def gate_header():
+    user = os.environ.get("GATE_USER", "demo")
+    pw = (ROOT / "secrets/gate_password").read_text().strip()
+    return "Basic " + base64.b64encode(f"{user}:{pw}".encode()).decode()
 
 
 def build_opener(base, cafile):
@@ -37,6 +48,8 @@ def call(method, path, body=None, csrf=True):
     if body is not None:
         req.data = json.dumps(body).encode()
         req.add_header("Content-Type", "application/json")
+    if GATE_AUTH:
+        req.add_header("Authorization", GATE_AUTH)
     if csrf:
         req.add_header("X-Requested-With", "XMLHttpRequest")
     try:
@@ -105,8 +118,11 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--base", default="https://localhost:8443")
     p.add_argument("--lifecycle", action="store_true")
+    p.add_argument("--gate", action="store_true", help="send gate Basic auth (also GATE_MODE=on)")
     p.add_argument("--ca", help="CA bundle to verify the gateway certificate")
     ARGS = p.parse_args()
+    if ARGS.gate or os.environ.get("GATE_MODE") == "on":
+        GATE_AUTH = gate_header()
     BASE = ARGS.base.rstrip("/")
     opener = build_opener(BASE, ARGS.ca)
     main()

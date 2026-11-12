@@ -123,3 +123,16 @@ def test_cycle_allows_sequential_five_minute_downward_transitions(station, facto
 def test_rain_integration_rejects_invalid_time(bad):
     with pytest.raises(ValueError):
         rain_last_five_minutes("cycle", bad)
+
+
+@pytest.mark.parametrize("station", STATIONS)
+def test_storm_saturates_below_sensor_range(station):
+    depth = 0.0
+    peak = 0.0
+    for _ in range(6 * 60):
+        before = depth
+        depth = advance_depth(depth, rain_intensity("storm", 0), 60, station)
+        assert abs(depth - before) < 30
+        peak = max(peak, depth)
+    assert 60 <= peak <= 100
+    assert max(peak, depth) <= 120

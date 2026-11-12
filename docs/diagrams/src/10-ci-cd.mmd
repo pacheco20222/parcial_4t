@@ -1,0 +1,16 @@
+flowchart LR
+    pr[Push / Pull Request<br/>GitHub Actions: Backend CI] --> ops & tel & sim & fe & sec & cq
+    subgraph paralelo[Jobs en paralelo]
+        ops[ops-service:<br/>dotnet format, build, xUnit]
+        tel[telemetry-service:<br/>ruff, mypy, pytest]
+        sim[simulator:<br/>ruff, pytest]
+        fe[frontend:<br/>ESLint, pruebas, build de producción]
+        sec[secrets-scan:<br/>gitleaks]
+        cq[codeql:<br/>C# y Python<br/>solo repositorio público]
+    end
+    ops & tel & sim & fe --> img
+    img[images: docker build de<br/>telemetry, ops, simulator<br/>+ Trivy: reporta HIGH/CRITICAL,<br/>rechaza CRITICAL con corrección] --> smoke[compose-smoke:<br/>docker compose up,<br/>health del gateway, ingesta de 5 puntos,<br/>prueba E2E]
+    smoke --> ok([Pipeline verde])
+    cd[CD: GHCR + despliegue por SSH<br/>diseñado, no habilitado]:::off
+    ok -.-> cd
+    classDef off stroke-dasharray: 5 5

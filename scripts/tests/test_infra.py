@@ -15,7 +15,7 @@ SECRET_NAMES = {
     "mqtt_telemetry_password", "mqtt_devices.json", "mosquitto_passwd", "ca.crt",
     "ca.key", "mqtt_server.crt", "mqtt_server.key", "jwt_private.pem", "jwt_public.pem",
     "seed_admin_password", "seed_supervisor_password", "seed_operator_password",
-    "grafana_admin_password",
+    "grafana_admin_password", "gate_password", "gate_password_hash",
 }
 
 
@@ -34,6 +34,10 @@ import hashlib, os, pathlib, sys
 if os.environ.get("FAIL_DOCKER"):
     sys.exit(17)
 args = sys.argv[1:]
+if "caddy:2.10.2-alpine" in args:
+    assert "hash-password" in args and not any("--plaintext" in a for a in args)
+    print("$2a$14$TEST-ONLY-" + hashlib.sha256(sys.stdin.read().encode()).hexdigest())
+    sys.exit(0)
 assert "--network" in args and args[args.index("--network") + 1] == "none"
 assert args[-3:] == ["eclipse-mosquitto:2.0.22", "-U", "/work/mosquitto_passwd"]
 mount = args[args.index("--mount") + 1]

@@ -19,7 +19,7 @@
 5. Is split into **two microservices** (C# + Python) that communicate through events.
 6. Is built, tested and scanned by **GitHub Actions CI**.
 
-**Current deployment target: local Docker Compose only.** Cloud hosting (likely a single VM such as AWS EC2) is deferred; the design keeps it a drop-in step (§13).
+**Deployment:** local Docker Compose for development; a single Hostinger VPS (IaaS) for the presentation (§13).
 
 **Explicit non-goals / honesty rules (from ADA 4.1):**
 
@@ -597,23 +597,24 @@ CD (push images to GHCR + deploy to VM with approval + rollback by SHA tag) is d
 
 ## 13. Deployment Model
 
-**Now:** local `docker compose up` on a developer machine — the same definition that will run in the cloud. Caddy uses its internal CA for `https://localhost`.
+**Local:** `docker compose up` on a developer machine — the same definition that runs in the cloud (Caddy internal CA for `https://localhost`).
 
-**Later (cloud, deferred): IaaS — single Linux VM (likely AWS EC2), Docker Compose.**
+**Cloud (presentation): IaaS — one Hostinger VPS (Ubuntu LTS, KVM 2: 2 vCPU / 8 GB), Docker Compose.** Short-lived: deployed for the demo, deleted afterwards. Steps: [docs/deploy-vps.md](docs/deploy-vps.md).
 
 ```mermaid
 flowchart TB
-    gh[GitHub Actions] -. SSH deploy, later .-> vm
-    ghcr[(GHCR images)] -. docker pull .-> vm
-    subgraph cloud[Cloud provider — e.g. AWS]
-        sg[Security group:<br/>443, 80, 22 admin /32]
-        subgraph vm[VM: Ubuntu LTS, ~2 vCPU / 4 GB RAM]
+    dev[Admin laptop] -- SSH key-only, admin IP --> fw
+    gh[(GitHub repo)] -- git pull --> vm
+    le[Let's Encrypt] -- ACME HTTP-01 --> fw
+    users[Profesor / equipo] -- HTTPS 443 + basic-auth gate --> fw
+    subgraph hostinger[Hostinger VPS]
+        fw[Firewall: hPanel + UFW<br/>22 admin /32, 80, 443]
+        subgraph vm[Ubuntu LTS + Docker]
             compose[Docker Compose stack<br/>all containers from §4]
-            vol[(Volumes: pgdata, loki,<br/>mosquitto data)]
+            vol[(Volumes: pgdata, loki,<br/>grafana, mosquitto, caddy)]
         end
-        sg --> vm
+        fw --> vm
     end
-    dns[Domain or sslip.io hostname] --> sg
 ```
 
 **Justification (for the report):**
@@ -668,8 +669,7 @@ parcial_4t/
 
 ## 16. Open Items
 
-- [ ] Cloud provider and VM size (likely AWS EC2, ~2 vCPU / 4 GB) — before presentation.
-- [ ] Domain name vs. `sslip.io` hostname for Let's Encrypt.
+- [ ] Deploy to the Hostinger VPS before the presentation (docs/deploy-vps.md); delete it afterwards.
 - [ ] Barrier analysis (technical legacy + cultural) and connected-value write-up (Topics 3.6 / 4.4).
 - [ ] Live demo script (6 min) and Q&A prep per team member.
 

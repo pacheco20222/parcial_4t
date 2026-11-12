@@ -29,7 +29,7 @@ describe('alerts list', () => {
     const page = TestBed.createComponent(AlertsComponent).componentInstance;
     const req = http.expectOne(r=>r.url==='/api/ops/alerts');
     expect(req.request.params.get('limit')).toBe('50'); expect(req.request.params.get('offset')).toBe('0');
-    events.next({...alert,status:'Closed'}); req.flush([alert]); expect(page.visible()).toEqual([]);
+    events.next({...alert,status:'Closed'}); req.flush([alert]); expect(page.items()).toEqual([]);
     page.changePage(1); const next = http.expectOne(r=>r.params.get('offset')==='50'); next.flush([]);
   });
   it('disables duplicate close calls, sends exact PATCH and reports failures',()=>{
@@ -44,7 +44,7 @@ describe('alerts list', () => {
     http.expectOne(r=>r.url==='/api/ops/alerts').flush([alert]);
     page.close(alert);
     http.expectOne('/api/ops/alerts/a').flush({...alert,status:'Closed'});
-    expect(page.visible()).toEqual([]); expect(page.feedback()).toBe('Alerta cerrada.');
+    expect(page.items()).toEqual([]); expect(page.feedback()).toBe('Alerta cerrada.');
     expect(page.pending().size).toBe(0);
   });
   it('does not let an old filter request replace a newer page',()=>{
@@ -52,7 +52,16 @@ describe('alerts list', () => {
     const old=http.expectOne(r=>r.url==='/api/ops/alerts');
     page.status='Closed'; page.filtersChanged();
     http.expectOne(r=>r.params.get('status')==='Closed').flush([{...alert,status:'Closed'}]);
-    old.flush([alert]); expect(page.visible()[0].status).toBe('Closed');
+    old.flush([alert]); expect(page.items()[0].status).toBe('Closed');
+  });
+  it('sends level to the API and keeps only live events matching the level',()=>{
+    const page=TestBed.createComponent(AlertsComponent).componentInstance;
+    http.expectOne(r=>r.url==='/api/ops/alerts').flush([]);
+    page.level='DataGap'; page.filtersChanged();
+    const req=http.expectOne(r=>r.params.get('level')==='DataGap'); expect(req.request.params.get('offset')).toBe('0');
+    req.flush([{...alert,id:'g',level:'DataGap'}]);
+    events.next({...alert,id:'w',level:'Watch'}); events.next({...alert,id:'g2',level:'DataGap'});
+    expect(page.items().map(a=>a.id).sort()).toEqual(['g','g2']);
   });
 
 });

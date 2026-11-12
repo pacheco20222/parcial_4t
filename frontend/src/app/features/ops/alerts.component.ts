@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -33,14 +33,13 @@ export class AlertsComponent {
   readonly actionErrors=signal<Record<string,string>>({});
   readonly offset=signal(0);
   readonly hasNext=signal(false);
-  readonly level=signal('');
-  readonly visible=computed(()=>this.items().filter(a=>!this.level()||a.level===this.level()));
   readonly pointLabel=pointLabel;
   readonly alertLevelLabel=alertLevelLabel;
   readonly alertStatusLabel=alertStatusLabel;
   readonly displayText=displayText;
   readonly formatDepth=formatDepth;
   status='Open';
+  level='';
   pointId='';
   private generation=0;
   private readonly events=new Map<string,Alert>();
@@ -62,6 +61,7 @@ export class AlertsComponent {
     this.events.clear(); this.loading.set(true); this.error.set('');
     let params=new HttpParams().set('limit',50).set('offset',this.offset());
     if(this.status) params=params.set('status',this.status);
+    if(this.level) params=params.set('level',this.level);
     if(this.pointId) params=params.set('pointId',this.pointId);
     this.http.get<Alert[]>('/api/ops/alerts',{params}).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next:items=>{
@@ -85,7 +85,7 @@ export class AlertsComponent {
     });
   }
   private finish(id:string):void {this.pending.update(ids=>{const next=new Set(ids);next.delete(id);return next;});}
-  private matches(alert:Alert):boolean {return (!this.status||alert.status===this.status)&&(!this.pointId||alert.pointId===this.pointId);}
+  private matches(alert:Alert):boolean {return (!this.status||alert.status===this.status)&&(!this.level||alert.level===this.level)&&(!this.pointId||alert.pointId===this.pointId);}
   private merge(alert:Alert):void {
     this.items.update(items=>{
       const rows=items.filter(a=>a.id!==alert.id);

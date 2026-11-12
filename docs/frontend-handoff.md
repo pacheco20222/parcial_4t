@@ -49,7 +49,7 @@ python3 scripts/smoke.py           # sanity check
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | POST | `/public/reports` | public | `{pointId?, category, description≤500}` → `{id, folio, status}`; category `Encharcamiento|CalleIntransitable|DrenajeTapado|Otro`; rate-limited (5/10 min/IP); no personal data |
-| GET | `/alerts?status&pointId&limit&offset` | Operator | `[{id, pointId, pointName, zone, level(Watch|Alert|DataGap), status(Open|Closed), openedAt, closedAt, reason, depthCm}]` |
+| GET | `/alerts?status&level&pointId&limit&offset` (`level` optional, `Watch\|Alert\|DataGap`, invalid → 400) | Operator | `[{id, pointId, pointName, zone, level(Watch|Alert|DataGap), status(Open|Closed), openedAt, closedAt, reason, depthCm}]` |
 | PATCH | `/alerts/{id}` | Operator | `{status}` |
 | GET | `/work-orders?status&priority&pointId&crewId&overdue&limit&offset` | Operator | `[{id, folio, alertId, citizenReportId, pointId, title, status, priority, crewId, createdAt, slaDueAt, assignedAt, onSiteAt, resolvedAt, closedAt, cancelReason, version}]` |
 | POST | `/work-orders` | Supervisor | `{pointId, title, priority}` |
