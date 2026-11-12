@@ -1,5 +1,5 @@
 # Stage 1: build the Angular SPA (frontend/) for production.
-FROM node:24.17.0-alpine AS spa
+FROM node:24.22.2-alpine AS spa
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
