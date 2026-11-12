@@ -31,13 +31,15 @@
     @for(status of columns;track status){
       <section class="column" [class.mobile-hidden]="mobileStatus()!==status" [attr.aria-label]="orderStatusLabel(status)">
         <h2 class="column-heading"><app-order-state [status]="status"/> <span>{{rows(status).length}}</span></h2>
+        <div class="column-body" tabindex="0" [attr.aria-label]="'Órdenes en estado ' + orderStatusLabel(status)">
         @for(order of rows(status);track order.id){<ng-container [ngTemplateOutlet]="card" [ngTemplateOutletContext]="{$implicit:order}"/>}
         @empty{@if(!store.loading() && !store.error()){<p class="empty-column">Sin órdenes con este estado y estos filtros.</p>}}
+        </div>
       </section>
     }
   </div>
   @if(store.hasMore()){<button type="button" (click)="store.loadMore()" [disabled]="store.loading()">{{store.loading()?'Cargando…':'Cargar más órdenes'}}</button>}
-  <details class="archive"><summary>Cerradas / canceladas ({{closed().length}})</summary><div class="closed-list">@for(order of closed();track order.id){<ng-container [ngTemplateOutlet]="card" [ngTemplateOutletContext]="{$implicit:order}"/>}@empty{<p>Sin órdenes cerradas o canceladas con estos filtros.</p>}</div></details>
+  <details class="archive"><summary>Cerradas / canceladas ({{closed().length}})</summary><div class="closed-list" tabindex="0" aria-label="Órdenes cerradas o canceladas">@for(order of closed();track order.id){<ng-container [ngTemplateOutlet]="card" [ngTemplateOutletContext]="{$implicit:order}"/>}@empty{<p>Sin órdenes cerradas o canceladas con estos filtros.</p>}</div></details>
 </main>
 <ng-template #card let-order>
   <article class="order" [class.overdue]="overdue(order)">
