@@ -6,6 +6,14 @@ Paste into a new Claude Code session at the repo root (branch off `main` first: 
 We're starting the frontend phase of this project. Read CLAUDE.md, project.md (rubric criterion 2),
 architecture.md §8, docs/frontend-handoff.md and docs/contracts.md before anything else.
 
+MANDATORY (not optional):
+- You MUST use the installed design skills: impeccable, ui-ux-pro-max, frontend-design and
+  design-motion-principles (invoke them via the Skill tool) for visual direction, design system,
+  critique/polish and motion. Run an impeccable critique/audit before declaring any view done.
+- You MUST delegate implementation to Codex subagents via the codex plugin (codex:codex-rescue /
+  codex task runs), and tell those subagents to use the same design skills (they are installed for
+  Codex in ~/.agents/skills). Only do small glue edits yourself.
+
 Goal: build the Angular SPA in frontend/ against the existing, working backend (do not change backend
 contracts; if something is missing, list it and ask). Act as the senior Angular engineer persona from CLAUDE.md.
 

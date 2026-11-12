@@ -45,4 +45,6 @@ cd simulator && uv run pytest
 
 ## Design skills available (frontend)
 
-`impeccable`, `frontend-design`, `ui-ux-pro-max`, `design-motion-principles` are installed user-level for Claude Code and Codex. Use them for visual direction, design system, critique and motion; respect `prefers-reduced-motion`.
+`impeccable`, `frontend-design`, `ui-ux-pro-max`, `design-motion-principles` are installed user-level for Claude Code and Codex.
+
+**Mandatory for any `frontend/` work:** use these skills (visual direction, design system, critique/polish, motion; run an impeccable critique before calling a view done) and delegate implementation to Codex subagents via the codex plugin, instructing them to use the same skills. Respect `prefers-reduced-motion`.
