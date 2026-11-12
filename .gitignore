@@ -1,0 +1,29 @@
+# secrets & env
+secrets/
+.env
+*.pem
+*.key
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# dotnet
+bin/
+obj/
+*.user
+TestResults/
+
+# node / frontend
+node_modules/
+dist/
+
+# os / tools
+.DS_Store
+.claude/worktrees/
+*.pdf
+.uv-cache/

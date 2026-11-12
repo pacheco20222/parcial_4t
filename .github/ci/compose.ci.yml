@@ -1,0 +1,4 @@
+services:
+  simulator:
+    environment:
+      INTERVAL_SECONDS: '10'

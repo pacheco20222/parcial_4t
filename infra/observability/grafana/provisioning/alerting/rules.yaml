@@ -1,0 +1,480 @@
+apiVersion: 1
+groups:
+- orgId: 1
+  name: flood-siem
+  folder: SOC
+  interval: 30s
+  rules:
+  - uid: sr-01
+    title: SR-01 — Device identity from unexpected source
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    isPaused: false
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: loki
+      model:
+        refId: A
+        expr: sum by (user, client_ip) (count_over_time({service="mosquitto",event="mqtt.auth_success"}
+          | json | user=~"DEV-.*" | client_ip != ip("172.30.10.0/24") | __error__=""
+          [1m]))
+        queryType: instant
+        instant: true
+        intervalMs: 1000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            type: last
+            params: []
+          type: query
+    labels:
+      severity: critical
+      rule_id: SR-01
+      team: soc
+    annotations:
+      summary: 'SR-01: Device identity from unexpected source'
+      description: A DEV-* identity authenticated outside ot_net (172.30.10.0/24).
+      mitre_attack: T1078, T1021
+      response_action: Revoke device credential; block source IP; open incident.
+  - uid: sr-02
+    title: SR-02 — MQTT brute force
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    isPaused: false
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: loki
+      model:
+        refId: A
+        expr: sum(count_over_time({service="mosquitto",event="mqtt.auth_failed"}[1m]))
+        queryType: instant
+        instant: true
+        intervalMs: 1000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 4
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            type: last
+            params: []
+          type: query
+    labels:
+      severity: high
+      rule_id: SR-02
+      team: soc
+    annotations:
+      summary: 'SR-02: MQTT brute force'
+      description: Five failed MQTT authentications broker-wide in 60 seconds.
+        Native failure lines lack source IP; do not auto-ban.
+      mitre_attack: T1110
+      response_action: Review failures; temporarily ban offending IP after attribution.
+  - uid: sr-03
+    title: SR-03 — Unauthorized topic publish
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    isPaused: false
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: loki
+      model:
+        refId: A
+        expr: sum(count_over_time({service="mosquitto",event="mqtt.acl_denied"}[5m]))
+        queryType: instant
+        instant: true
+        intervalMs: 1000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            type: last
+            params: []
+          type: query
+    labels:
+      severity: critical
+      rule_id: SR-03
+      team: soc
+    annotations:
+      summary: 'SR-03: Unauthorized topic publish'
+      description: At least one broker PUBLISH ACL denial within five minutes.
+      mitre_attack: T1565.002
+      response_action: Disable identity after attribution; investigate compromised
+        device.
+  - uid: sr-04
+    title: SR-04 — Telemetry spoofing or flood
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    isPaused: false
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: loki
+      model:
+        refId: A
+        expr: sum by (device_id) (count_over_time({service="telemetry-service",event=~"telemetry.rate_exceeded|telemetry.topic_mismatch"}
+          | json | __error__="" [1m]))
+        queryType: instant
+        instant: true
+        intervalMs: 1000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            type: last
+            params: []
+          type: query
+    labels:
+      severity: high
+      rule_id: SR-04
+      team: soc
+    annotations:
+      summary: 'SR-04: Telemetry spoofing or flood'
+      description: Service emits rate_exceeded after >5 messages/device/minute, or
+        topic_mismatch immediately.
+      mitre_attack: T1565.002, T1499
+      response_action: Quarantine suspect readings; investigate device and topic ownership.
+  - uid: sr-05
+    title: SR-05 — Physically implausible reading
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    isPaused: false
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: loki
+      model:
+        refId: A
+        expr: sum by (device_id) (count_over_time({service="telemetry-service",event="telemetry.suspect_reading"}
+          | json | __error__="" [1m]))
+        queryType: instant
+        instant: true
+        intervalMs: 1000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            type: last
+            params: []
+          type: query
+    labels:
+      severity: medium
+      rule_id: SR-05
+      team: soc
+    annotations:
+      summary: 'SR-05: Physically implausible reading'
+      description: A suspect reading was flagged. Includes >30 cm/min jumps and other
+        suspect conditions; logs do not distinguish causes.
+      mitre_attack: T1565.002
+      response_action: Notify operator; confirm measurement before opening work order.
+  - uid: sr-06
+    title: SR-06 — Dashboard credential attack
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    isPaused: false
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: loki
+      model:
+        refId: A
+        expr: sum by (identity, dimension) (count_over_time({service="ops-service",event="auth.login_failed"}
+          | json | label_format identity="{{.client_ip}}",dimension="ip" | __error__=""
+          [5m])) or sum by (identity, dimension) (count_over_time({service="ops-service",event="auth.login_failed"}
+          | json | user!="" | label_format identity="{{.user}}",dimension="account"
+          | __error__="" [5m]))
+        queryType: instant
+        instant: true
+        intervalMs: 1000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 9
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            type: last
+            params: []
+          type: query
+    labels:
+      severity: high
+      rule_id: SR-06
+      team: soc
+    annotations:
+      summary: 'SR-06: Dashboard credential attack'
+      description: Ten failed logins per IP or nonempty account in five minutes. Account
+        grouping requires user on failed-login logs.
+      mitre_attack: T1110
+      response_action: Review lockout; rate-limit IP; investigate account compromise.
+  - uid: sr-07
+    title: SR-07 — Privilege misuse
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    isPaused: false
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: loki
+      model:
+        refId: A
+        expr: sum by (user) (count_over_time({service=~"ops-service|telemetry-service",event=~"audit.threshold_change|audit.workorder_cancel"}
+          | json | label_format utc_hour=`{{ __timestamp__ | date "15" }}` | utc_hour
+          >= 5 and utc_hour < 12 | __error__="" [1m])) or sum by (user) (count_over_time({service=~"ops-service|telemetry-service",event=~"audit.threshold_change|audit.workorder_cancel"}
+          | json | account_age_seconds!="" | account_age_seconds >= 0 and account_age_seconds
+          < 86400 | __error__="" [1m]))
+        queryType: instant
+        instant: true
+        intervalMs: 1000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            type: last
+            params: []
+          type: query
+    labels:
+      severity: medium
+      rule_id: SR-07
+      team: soc
+    annotations:
+      summary: 'SR-07: Privilege misuse'
+      description: Threshold change or work order cancel outside 06:00–23:00 America/Merida
+        (UTC-06), or account younger than 24 hours when age is supplied.
+      mitre_attack: T1078, T1098
+      response_action: Ask supervisor to review audit event and account history.

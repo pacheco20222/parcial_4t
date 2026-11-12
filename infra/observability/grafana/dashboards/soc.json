@@ -1,0 +1,190 @@
+{
+  "uid": "flood-soc",
+  "title": "SOC — Flood Platform",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": [
+    "soc",
+    "flood"
+  ],
+  "refresh": "30s",
+  "timezone": "America/Merida",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Auth events over time",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (event) (count_over_time({job=\"flood\",event=~`auth\\..*|mqtt\\.auth_.*`}[$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{event}}{{client_ip}}{{identity}}"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 2,
+      "title": "MQTT auth failures by IP (unknown = source missing)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (client_ip) (count_over_time({service=\"mosquitto\",event=\"mqtt.auth_failed\"} | json | __error__=\"\" [1m]))",
+          "queryType": "range",
+          "legendFormat": "{{event}}{{client_ip}}{{identity}}"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 3,
+      "title": "MQTT ACL denials",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({service=\"mosquitto\",event=\"mqtt.acl_denied\"}[5m]))",
+          "queryType": "range",
+          "legendFormat": "{{event}}{{client_ip}}{{identity}}"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "Telemetry suspect / rate / topic events",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (event) (count_over_time({service=\"telemetry-service\",event=~\"telemetry.suspect_reading|telemetry.rate_exceeded|telemetry.topic_mismatch\"}[$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{event}}{{client_ip}}{{identity}}"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 5,
+      "title": "Login failures",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (identity, dimension) (count_over_time({service=\"ops-service\",event=\"auth.login_failed\"} | json | label_format identity=\"{{.client_ip}}\",dimension=\"ip\" | __error__=\"\" [5m])) or sum by (identity, dimension) (count_over_time({service=\"ops-service\",event=\"auth.login_failed\"} | json | user!=\"\" | label_format identity=\"{{.user}}\",dimension=\"account\" | __error__=\"\" [5m]))",
+          "queryType": "range",
+          "legendFormat": "{{event}}{{client_ip}}{{identity}}"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 6,
+      "title": "Top Caddy IPs",
+      "type": "barchart",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by (client_ip) (count_over_time({service=\"caddy\",event=\"http.access\"} | json | __error__=\"\" [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{event}}{{client_ip}}{{identity}}"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 7,
+      "title": "Recent critical detection log lines",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service=\"mosquitto\",event=~\"mqtt.auth_success|mqtt.acl_denied\"} | json | event=\"mqtt.acl_denied\" or (event=\"mqtt.auth_success\" and user=~\"DEV-.*\" and client_ip != ip(\"172.30.10.0/24\")) | __error__=\"\"",
+          "queryType": "range",
+          "legendFormat": "{{event}}{{client_ip}}{{identity}}"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+positions:
+  filename: /positions/positions.yaml
+  sync_period: 10s
+clients:
+- url: http://loki:3100/loki/api/v1/push
+  timeout: 10s
+  backoff_config:
+    min_period: 500ms
+    max_period: 30s
+    max_retries: 10
+scrape_configs:
+- job_name: compose
+  docker_sd_configs:
+  - host: unix:///var/run/docker.sock
+    refresh_interval: 10s
+    filters:
+    - name: label
+      values:
+      - com.docker.compose.project=merida-flood
+  relabel_configs:
+  - source_labels:
+    - __meta_docker_container_label_com_docker_compose_service
+    regex: (telemetry-service|ops-service|mosquitto|caddy|postgres)
+    action: keep
+  - source_labels:
+    - __meta_docker_container_label_com_docker_compose_service
+    target_label: service
+  - target_label: job
+    replacement: flood
+  pipeline_stages:
+  - template:
+      source: event
+      template: service.log
+  - template:
+      source: level
+      template: info
+  - match:
+      selector: '{service=~"telemetry-service|ops-service"}'
+      stages:
+      - json:
+          expressions:
+            ts: ts || Timestamp
+            event: event || State.event || Scopes[0].event
+            level: level || LogLevel
+            client_ip: client_ip || State.client_ip || Scopes[0].client_ip
+            user: user || State.user || Scopes[0].user
+            device_id: device_id || State.device_id || Scopes[0].device_id
+            point_id: point_id || State.point_id
+            path: path || State.path
+            status: status || State.status
+            account_age_seconds: account_age_seconds || State.account_age_seconds
+  - match:
+      selector: '{service="mosquitto"}'
+      stages:
+      - regex:
+          expression: '^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z):? '
+      - match:
+          selector: '{service="mosquitto"} |= "New client connected from "'
+          stages:
+          - regex:
+              expression: New client connected from (?P<client_ip>\S+):\d+ as (?P<client_id>\S+) .*u'(?P<user>[^']*)'
+          - template:
+              source: event
+              template: mqtt.auth_success
+      - match:
+          selector: '{service="mosquitto"} |~ "(?i)(not authori[sz]ed|bad user name or password)"'
+          stages:
+          - regex:
+              expression: 'Client (?P<client_id>\S+) disconnected[, :] *(?i:not authori[sz]ed|bad user name or password)\.'
+          - template:
+              source: event
+              template: mqtt.auth_failed
+          - template:
+              source: level
+              template: warning
+      - match:
+          selector: '{service="mosquitto"} |= "Denied PUBLISH from "'
+          stages:
+          - regex:
+              expression: Denied PUBLISH from (?P<client_id>\S+) .*\x27(?P<path>[^\x27]*)\x27
+          - template:
+              source: event
+              template: mqtt.acl_denied
+          - template:
+              source: level
+              template: warning
+  - match:
+      selector: '{service="caddy"}'
+      stages:
+      - json:
+          expressions:
+            caddy_ts: ts
+            level: level
+            client_ip: request.remote_ip
+            status: status
+            uri: request.uri
+      - timestamp:
+          source: caddy_ts
+          format: Unix
+          action_on_failure: skip
+      - template:
+          source: ts
+          template: '{{ dateInZone "2006-01-02T15:04:05Z" (int64 .caddy_ts) "UTC" }}'
+      - regex:
+          source: uri
+          expression: ^(?P<path>[^?]*)
+      - template:
+          source: event
+          template: '{{ if .uri }}http.access{{ else }}service.log{{ end }}'
+  - timestamp:
+      source: ts
+      format: RFC3339Nano
+      action_on_failure: skip
+  - template:
+      source: level
+      template: '{{ if .Value }}{{ ToLower .Value }}{{ else }}info{{ end }}'
+  - template:
+      source: client_ip
+      template: '{{ if .Value }}{{ .Value }}{{ else }}unknown{{ end }}'
+  - template:
+      source: ts
+      template: '{{ if .Value }}{{ .Value }}{{ else }}{{ dateInZone "2006-01-02T15:04:05Z" now "UTC" }}{{ end }}'
+  - template:
+      source: normalized
+      template: '{{ dict "ts" (printf "%v" (or .ts "")) "level" (printf "%v" (or .level "")) "service" (printf "%v"
+        (or .service "")) "event" (printf "%v" (or .event "")) "client_ip" (printf "%v" (or .client_ip "")) "client_id" (printf "%v" (or .client_id "")) "user"
+        (printf "%v" (or .user "")) "device_id" (printf "%v" (or .device_id "")) "point_id" (printf "%v" (or .point_id
+        "")) "path" (printf "%v" (or .path "")) "status" (printf "%v" (or .status "")) "account_age_seconds" (printf
+        "%v" (or .account_age_seconds "")) | toJson }}'
+  - labels:
+      event: ''
+      level: ''
+  - output:
+      source: normalized

@@ -1,0 +1,34 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /services/ops-service
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /services/telemetry-service
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /simulator
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /services/ops-service
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /services/telemetry-service
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /simulator
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /infra/caddy
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

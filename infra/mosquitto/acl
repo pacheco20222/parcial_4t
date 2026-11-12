@@ -1,0 +1,17 @@
+user svc-telemetry
+topic read merida/flood/+/+/telemetry
+
+user DEV-P01-A
+topic write merida/flood/P01/DEV-P01-A/telemetry
+
+user DEV-P02-A
+topic write merida/flood/P02/DEV-P02-A/telemetry
+
+user DEV-P03-A
+topic write merida/flood/P03/DEV-P03-A/telemetry
+
+user DEV-P04-A
+topic write merida/flood/P04/DEV-P04-A/telemetry
+
+user DEV-P05-A
+topic write merida/flood/P05/DEV-P05-A/telemetry

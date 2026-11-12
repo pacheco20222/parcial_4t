@@ -1,0 +1,31 @@
+# External webhook intentionally disabled. Replace loopback URL, then remove mute route to enable.
+# Example only (not active): https://soc.example.invalid/webhook
+apiVersion: 1
+contactPoints:
+- orgId: 1
+  name: soc-alerts
+  receivers:
+  - uid: soc-local
+    type: webhook
+    disableResolveMessage: true
+    settings:
+      url: http://127.0.0.1:9099/disabled-soc-webhook
+policies:
+- orgId: 1
+  receiver: soc-alerts
+  group_by:
+  - rule_id
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+  - receiver: soc-alerts
+    mute_time_intervals:
+    - soc-delivery-disabled
+muteTimes:
+- orgId: 1
+  name: soc-delivery-disabled
+  time_intervals:
+  - times:
+    - start_time: 00:00
+      end_time: '24:00'

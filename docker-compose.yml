@@ -1,0 +1,326 @@
+name: merida-flood
+
+x-hardening: &hardening
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+  cpus: 1.0
+  pids_limit: 200
+
+x-health: &health
+  interval: 15s
+  timeout: 10s
+  retries: 5
+  start_period: 30s
+
+services:
+  postgres:
+    <<: *hardening
+    image: timescale/timescaledb:2.22.1-pg17
+    user: "70:70"
+    mem_limit: 1g
+    environment:
+      POSTGRES_DB: flood
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: UTC
+    secrets: [postgres_password, telemetry_db_password, ops_db_password]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/10-init.sh:/docker-entrypoint-initdb.d/10-flood-init.sh:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /var/run/postgresql:rw,nosuid,uid=70,gid=70,size=16m
+    networks: [data_net]
+    healthcheck:
+      <<: *health
+      test: [CMD-SHELL, 'pg_isready -U postgres -d flood -h 127.0.0.1']
+
+  redis:
+    <<: *hardening
+    image: redis:7.4.6-alpine
+    user: "999:999"
+    mem_limit: 256m
+    entrypoint: [/bin/sh, /usr/local/bin/flood-redis-start]
+    environment:
+      TZ: UTC
+    secrets: [redis_password]
+    volumes:
+      - redisdata:/data
+      - ./infra/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - ./infra/redis/start.sh:/usr/local/bin/flood-redis-start:ro
+    networks: [app_net]
+    healthcheck:
+      <<: *health
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$(cat /run/secrets/redis_password)" redis-cli ping | grep -qx PONG']
+
+  mosquitto:
+    <<: *hardening
+    image: eclipse-mosquitto:2.0.22
+    user: "1883:1883"
+    # Bypass image entrypoint's root-only recursive chown.
+    entrypoint: [mosquitto, -c, /mosquitto/config/mosquitto.conf]
+    mem_limit: 128m
+    environment:
+      TZ: UTC
+    secrets: [ca.crt, mqtt_server.crt, mqtt_server.key, mosquitto_passwd]
+    volumes:
+      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infra/mosquitto/acl:/mosquitto/config/acl:ro
+      - mqttdata:/mosquitto/data
+    networks:
+      ot_net: {}
+      idmz_net:
+        ipv4_address: 172.30.20.10
+    healthcheck:
+      <<: *health
+      test: [CMD-SHELL, 'nc -z 127.0.0.1 8883']
+
+  telemetry-service:
+    <<: *hardening
+    build: ./services/telemetry-service
+    user: "10001:10001"
+    mem_limit: 512m
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_NAME: flood
+      DATABASE_USER: telemetry_svc
+      DATABASE_PASSWORD_FILE: /run/secrets/telemetry_db_password
+      REDIS_HOST: redis
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "8883"
+      MQTT_USERNAME: svc-telemetry
+      MQTT_PASSWORD_FILE: /run/secrets/mqtt_telemetry_password
+      MQTT_CA_FILE: /run/secrets/ca.crt
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public.pem
+      OPEN_METEO_ENABLED: ${OPEN_METEO_ENABLED:-true}
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
+      PYTHONDONTWRITEBYTECODE: "1"
+    secrets: [telemetry_db_password, redis_password, mqtt_telemetry_password, ca.crt, jwt_public.pem]
+    networks: [app_net, data_net, idmz_net]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      mosquitto: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5).close()"]
+
+  ops-service:
+    <<: *hardening
+    build: ./services/ops-service
+    user: "1654:1654"
+    mem_limit: 512m
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      Database__Host: postgres
+      Database__Name: flood
+      Database__User: ops_svc
+      Database__PasswordFile: /run/secrets/ops_db_password
+      Redis__Host: redis
+      Redis__PasswordFile: /run/secrets/redis_password
+      Jwt__PrivateKeyFile: /run/secrets/jwt_private.pem
+      Jwt__PublicKeyFile: /run/secrets/jwt_public.pem
+      Seed__AdminPasswordFile: /run/secrets/seed_admin_password
+      Seed__SupervisorPasswordFile: /run/secrets/seed_supervisor_password
+      Seed__OperatorPasswordFile: /run/secrets/seed_operator_password
+      Security__EnforceMfa: ${SECURITY_ENFORCE_MFA:-false}
+      DOTNET_EnableDiagnostics: "0"
+    secrets: [ops_db_password, redis_password, jwt_private.pem, jwt_public.pem, seed_admin_password, seed_supervisor_password, seed_operator_password]
+    networks: [app_net, data_net]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      # Uses bash bundled in the standard ASP.NET image; no curl dependency.
+      test: [CMD, bash, -ec, 'exec 3<>/dev/tcp/127.0.0.1/8080; printf "GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3; read -r response <&3; [[ "$$response" == *" 200 "* ]]']
+
+  simulator:
+    <<: *hardening
+    build: ./simulator
+    user: "10001:10001"
+    mem_limit: 128m
+    environment: &simulator-env
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "8883"
+      MQTT_CA_FILE: /run/secrets/ca.crt
+      MQTT_DEVICES_FILE: /run/secrets/mqtt_devices.json
+      SCENARIO: ${SCENARIO:-cycle}
+      INTERVAL_SECONDS: ${INTERVAL_SECONDS:-60}
+      PYTHONDONTWRITEBYTECODE: "1"
+    secrets: [ca.crt, mqtt_devices.json]
+    networks: [ot_net]
+    depends_on:
+      mosquitto: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      test: [CMD, python, -c, 'import os; os.kill(1, 0)']
+
+  attack-sim:
+    <<: *hardening
+    build: ./simulator
+    profiles: [demo]
+    user: "10001:10001"
+    mem_limit: 128m
+    command: [python, -m, flood_simulator.attack_sim]
+    environment:
+      <<: *simulator-env
+      ATTACK_SIM_CONFIRM: lab
+    secrets: [ca.crt, mqtt_devices.json]
+    # Force IDMZ routing while retaining the certificate SAN hostname.
+    extra_hosts: ["mosquitto:172.30.20.10"]
+    networks: [ot_net, idmz_net]
+    depends_on:
+      mosquitto: {condition: service_healthy}
+      telemetry-service: {condition: service_healthy}
+      ops-service: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      test: [CMD, python, -c, 'import os; os.kill(1, 0)']
+
+  caddy:
+    <<: *hardening
+    build: ./infra/caddy
+    user: "1000:1000"
+    mem_limit: 128m
+    cap_add: [NET_BIND_SERVICE]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+      GATEWAY_HTTPS_PORT: ${GATEWAY_HTTPS_PORT:-8443}
+      XDG_DATA_HOME: /data
+      XDG_CONFIG_HOME: /config
+    ports:
+      - "${GATEWAY_HTTPS_PORT:-8443}:443"
+      - "${GATEWAY_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./infra/caddy/www:/srv/www:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    networks:
+      edge_net: {}
+      app_net: {ipv4_address: 172.30.30.10}  # fixed: services trust X-Forwarded-For only from this IP
+      mon_net: {}
+    depends_on:
+      telemetry-service: {condition: service_healthy}
+      ops-service: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1:2019/config/']
+
+  loki:
+    <<: *hardening
+    image: grafana/loki:3.4.2
+    user: "10001:10001"
+    mem_limit: 512m
+    command: [-config.file=/etc/loki/loki.yaml, -target=all]
+    volumes:
+      - ./infra/observability/loki.yaml:/etc/loki/loki.yaml:ro
+      - lokidata:/loki
+    networks: [mon_net]
+    healthcheck:
+      <<: *health
+      # Distroless image: no shell/wget. Binary check is liveness only;
+      # orchestrator must also verify HTTP /ready from mon_net.
+      test: [CMD, /usr/bin/loki, -version]
+
+  promtail:
+    <<: *hardening
+    image: grafana/promtail:3.4.2
+    # Docker socket is normally root-owned. Read-only mount does NOT make API read-only.
+    user: "0:0"
+    mem_limit: 256m
+    command: [-config.file=/etc/promtail/promtail.yaml]
+    volumes:
+      - ./infra/observability/promtail.yaml:/etc/promtail/promtail.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtailpositions:/positions
+    networks: [mon_net]
+    depends_on:
+      loki: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      test: [CMD, bash, -ec, 'exec 3<>/dev/tcp/127.0.0.1/9080; printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3; read -r response <&3; [[ "$$response" == *" 200 "* ]]']
+
+  grafana:
+    <<: *hardening
+    image: grafana/grafana:11.6.0
+    user: "472:472"
+    mem_limit: 512m
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_SERVER_ROOT_URL: '%(protocol)s://%(domain)s/soc/'
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_LOG_MODE: console
+      GF_LOG_CONSOLE_FORMAT: json
+      GF_INSTALL_PLUGINS: ""
+    secrets: [grafana_admin_password]
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks: [mon_net]
+    depends_on:
+      loki: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1:3000/soc/api/health']
+
+networks:
+  edge_net:
+    ipam: {config: [{subnet: 172.30.0.0/24}]}
+  ot_net:
+    internal: true
+    ipam: {config: [{subnet: 172.30.10.0/24}]}
+  idmz_net:
+    internal: true
+    ipam: {config: [{subnet: 172.30.20.0/24}]}
+  app_net:
+    ipam: {config: [{subnet: 172.30.30.0/24}]}
+  data_net:
+    internal: true
+    ipam: {config: [{subnet: 172.30.40.0/24}]}
+  mon_net:
+    ipam: {config: [{subnet: 172.30.50.0/24}]}
+
+volumes:
+  lokidata:
+  grafanadata:
+  promtailpositions:
+  pgdata:
+  redisdata:
+  mqttdata:
+  caddydata:
+  caddyconfig:
+
+secrets:
+  postgres_password: {file: ./secrets/postgres_password}
+  telemetry_db_password: {file: ./secrets/telemetry_db_password}
+  ops_db_password: {file: ./secrets/ops_db_password}
+  redis_password: {file: ./secrets/redis_password}
+  mqtt_telemetry_password: {file: ./secrets/mqtt_telemetry_password}
+  mqtt_devices.json: {file: ./secrets/mqtt_devices.json}
+  mosquitto_passwd: {file: ./secrets/mosquitto_passwd}
+  ca.crt: {file: ./secrets/ca.crt}
+  ca.key: {file: ./secrets/ca.key}
+  mqtt_server.crt: {file: ./secrets/mqtt_server.crt}
+  mqtt_server.key: {file: ./secrets/mqtt_server.key}
+  jwt_private.pem: {file: ./secrets/jwt_private.pem}
+  jwt_public.pem: {file: ./secrets/jwt_public.pem}
+  seed_admin_password: {file: ./secrets/seed_admin_password}
+  seed_supervisor_password: {file: ./secrets/seed_supervisor_password}
+  seed_operator_password: {file: ./secrets/seed_operator_password}
+  grafana_admin_password: {file: ./secrets/grafana_admin_password}
