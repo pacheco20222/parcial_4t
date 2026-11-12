@@ -16,9 +16,10 @@ python3 scripts/smoke.py           # sanity check
 
 ## Where the SPA lives
 
-- Put the app in `frontend/`. Caddy serves static files from `infra/caddy/www` mounted at `/srv/www` (`docker-compose.yml`, caddy volumes) → point that mount at the Angular build output (`frontend/dist/<app>/browser`) or add a build stage; keep SPA fallback (`try_files {path} /index.html`) in `infra/caddy/Caddyfile`.
-- Same origin as the APIs → **no CORS**, cookies just work. Dev server: use `ng serve` with a proxy (`/api`, `/hubs` → `https://localhost:8443`, `secure: false`, `ws: true`).
-- CSP is strict (`default-src 'self'`, `connect-src 'self' wss:`, images from OSM tiles). No inline scripts, no external CDNs (bundle fonts/libs). Leaflet tiles: `https://{s}.tile.openstreetmap.org`.
+- App in `frontend/` (Angular 22, see `frontend/README.md`). `infra/caddy/Dockerfile` builds it in a Node stage (compose build context = repo root, `infra/caddy/Dockerfile.dockerignore`) and copies `dist/alerta-pluvial/browser` to `/srv/www`; SPA fallback `try_files {path} /index.html`.
+- Same origin as the APIs → **no CORS**, cookies just work. Dev server: `ng serve` with `frontend/proxy.conf.json` (`/api`, `/hubs`, `/soc` → `https://localhost:8443`); the `/hubs` entry rewrites `Origin` because ops-service rejects cross-origin hub requests.
+- CSP is strict (`default-src 'self'`, `connect-src 'self'`, images from OSM tiles). No inline scripts, no external CDNs (bundle fonts/libs). Leaflet tiles: `https://{s}.tile.openstreetmap.org`.
+- Angular component styles need a nonce: Caddy's `templates` fills `ngCspNonce="{{placeholder `http.request.uuid`}}"` in `index.html` and the same value in `style-src 'self' 'nonce-…'`. Keep the backticks (Angular HTML-escapes double quotes when copying the nonce). No `style="…"` attributes in HTML strings (e.g. Leaflet `divIcon`); CSSOM (`el.style.x`) is fine. `inlineCritical` is off (its `onload` handler is blocked).
 
 ## Auth rules (must follow)
 
@@ -35,7 +36,7 @@ python3 scripts/smoke.py           # sanity check
 
 | Method | Path | Role | Response |
 |---|---|---|---|
-| GET | `/public/points` | public | `[{id, name, zone, lat, lon, status, simulated, waterDepthCm, updatedAt, lastUpdateAgeSeconds}]` |
+| GET | `/public/points` | public | `[{id, name, zone, lat, lon, status, simulated, watchThresholdCm, alertThresholdCm, waterDepthCm, updatedAt, lastUpdateAgeSeconds}]` — thresholds are floats read from DB on each request |
 | GET | `/points/{id}/readings?from&to&bucket` | Operator | `[{capturedAt, waterDepthCm, rainMm5min}]` — bucket `1m|5m|15m|1h`, ISO UTC from/to, default last 6 h, max 7 d |
 | GET | `/kpis` | Operator | `{pointsByStatus:{Normal,Watch,Alert,NoData}, maxDepthCm, rainLast60minMm, rainLast60minByPoint, dataFreshnessSeconds}` |
 | GET | `/points/{id}/forecast` | Operator | `[{forecastFor, issuedAt, precipMm}]` (real Open-Meteo, hourly next 24 h) |

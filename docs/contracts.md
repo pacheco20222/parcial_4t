@@ -88,7 +88,7 @@ Membership per architecture.md §5. Gateway host port: `${GATEWAY_HTTPS_PORT:-84
 | `/api/ops/*` | `ops-service:8080` | yes |
 | `/hubs/*` | `ops-service:8080` | no |
 | `/soc/*` | `grafana:3000` (serve_from_sub_path) | no |
-| `/*` | static SPA (`frontend/dist`, placeholder page until frontend exists) | — |
+| `/*` | static Angular SPA built into the caddy image (`frontend/`) | — |
 
 ## 9. Logging (SIEM input)
 

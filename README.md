@@ -2,7 +2,7 @@
 
 SIS4415 · Segundo Parcial (Data-Driven 4.0, Units 3–4). Simulated IoT sensors → MQTT (TLS, IDMZ) → two microservices (FastAPI + ASP.NET Core) → PostgreSQL/TimescaleDB + Redis → real-time API/SignalR, with a SIEM-lite (Grafana/Loki) and CI.
 
-**Status:** backend complete and running locally with Docker Compose. Frontend (Angular) is the next phase; cloud deploy is deferred.
+**Status:** backend + Angular dashboard ("Alerta Pluvial Mérida") complete and running locally with Docker Compose; cloud deploy is deferred.
 
 ## Docs map
 
@@ -28,9 +28,10 @@ docker compose up -d --build     # ~11 containers, all healthchecked
 python3 scripts/smoke.py         # end-to-end check through the gateway
 ```
 
-- Gateway: https://localhost:8443 (`/api/telemetry/*`, `/api/ops/*`, `/hubs/live`, `/soc/` Grafana).
+- Dashboard: https://localhost:8443 (citizen view at `/`, staff console at `/ops` after login). Gateway also serves `/api/telemetry/*`, `/api/ops/*`, `/hubs/live`, `/soc/` Grafana.
+- Frontend dev: `cd frontend && npm ci && npx ng serve` → http://localhost:4200 (proxies to the gateway); see `frontend/README.md`.
 - Logins: `admin|supervisor|operator@flood.local`, passwords in `secrets/seed_*_password`; Grafana `admin` / `secrets/grafana_admin_password`.
-- Demo storm: `SCENARIO=storm INTERVAL_SECONDS=10 docker compose up -d simulator`.
+- Demo storm: `SCENARIO=storm INTERVAL_SECONDS=10 docker compose up -d simulator` (depth keeps rising past the 150 cm sensor range → readings flagged suspect → points end in Sin datos; for a full Normal→Alerta→Normal loop use `SCENARIO=cycle`).
 - SIEM demo (lab only): `docker compose --profile demo run --rm attack-sim` → alerts in Grafana → Alerting.
 - Reset everything: `docker compose down -v`.
 
@@ -40,6 +41,7 @@ python3 scripts/smoke.py         # end-to-end check through the gateway
 services/telemetry-service/   FastAPI: MQTT ingestion, validation, Timescale, status machine, KPIs, Open-Meteo
 services/ops-service/         ASP.NET Core: auth (JWT RS256 cookies, MFA), ERP/MES work orders, SignalR
 simulator/                    Python sensor simulator + attack simulator
+frontend/                     Angular 22 SPA (signals, SignalR, Leaflet), built into the caddy image
 infra/                        postgres, mosquitto, redis, caddy, observability (loki/promtail/grafana)
 scripts/                      bootstrap.sh (secrets), smoke.py (e2e)
 .github/                      CI (tests, CodeQL, gitleaks, Trivy, compose smoke)
