@@ -1,0 +1,234 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-12T15:23:51.456974+00:00",
+  "title": "Design System: Alerta Pluvial Mérida",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "primary",
+        "displayName": "Signal Ink",
+        "canonical": "#101820",
+        "tonalRamp": [
+          "#101820"
+        ]
+      },
+      "normal": {
+        "role": "secondary",
+        "displayName": "Signal Green",
+        "canonical": "#2e7d32",
+        "tonalRamp": [
+          "#2e7d32"
+        ]
+      },
+      "watch": {
+        "role": "secondary",
+        "displayName": "Signal Amber",
+        "canonical": "#f2b705",
+        "tonalRamp": [
+          "#f2b705"
+        ]
+      },
+      "alert": {
+        "role": "secondary",
+        "displayName": "Signal Red",
+        "canonical": "#d6402a",
+        "tonalRamp": [
+          "#d6402a"
+        ]
+      },
+      "nodata": {
+        "role": "secondary",
+        "displayName": "Slate Hatch",
+        "canonical": "#6b7280",
+        "tonalRamp": [
+          "#6b7280"
+        ]
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Bulletin White",
+        "canonical": "#f7f7f4",
+        "tonalRamp": [
+          "#f7f7f4"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Card White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#ffffff"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#d9d9d2",
+        "tonalRamp": [
+          "#d9d9d2"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Slate",
+        "canonical": "#565f6a",
+        "tonalRamp": [
+          "#565f6a"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Status-band word."
+      },
+      "kpi-numeral": {
+        "displayName": "KPI numeral",
+        "purpose": "Five live KPI values."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page and column headings."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel section headings, uppercase."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text and controls."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Captions, timestamps, details."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ease-signal",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "All status-change motion."
+      },
+      {
+        "name": "duration-signal",
+        "value": "180ms",
+        "purpose": "Band crossfade and rung FLIP; disabled under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "767px"
+      },
+      {
+        "name": "tablet-max",
+        "value": "1199px"
+      },
+      {
+        "name": "desktop-panel",
+        "value": "1200px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Solid ink square button, 44px tall.",
+      "html": "<button class=\"ds-btn\">Guardar</button>",
+      "css": ".ds-btn{min-height:44px;padding:9px 15px;border:1px solid #101820;border-radius:0;background:#101820;color:#fff;font:600 16px Barlow,sans-serif;cursor:pointer}.ds-btn:hover{background:#2d3a46}.ds-btn:focus-visible{outline:2px solid #101820;outline-offset:3px}"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Square white input with muted border.",
+      "html": "<input class=\"ds-input\" placeholder=\"Buscar\">",
+      "css": ".ds-input{min-height:44px;padding:9px 10px;border:1px solid #565f6a;border-radius:0;background:#fff;color:#101820;font:400 16px Barlow,sans-serif}.ds-input:focus-visible{outline:2px solid #101820;outline-offset:3px}"
+    },
+    {
+      "name": "Status Band",
+      "kind": "custom",
+      "refersTo": "status-band",
+      "description": "Full-width worst-status band with glyph, sentence and live chip.",
+      "html": "<div class=\"ds-band\"><strong>&#9650; Alerta</strong><p>1 punto en alerta</p><span>En vivo</span></div>",
+      "css": ".ds-band{display:flex;align-items:center;gap:16px;min-height:56px;padding:8px 24px;background:#d6402a;color:#fff;transition:background-color 180ms cubic-bezier(.16,1,.3,1)}.ds-band strong{font:800 28px/32px 'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.04em}.ds-band p{flex:1;margin:0;font:600 18px Barlow,sans-serif}.ds-band span{border:1px solid currentColor;padding:7px 10px;font:600 14px Barlow,sans-serif}"
+    },
+    {
+      "name": "Ladder Rung",
+      "kind": "custom",
+      "refersTo": "signal-field-watch",
+      "description": "Solid signal field with point rows divided by half-opacity hairlines.",
+      "html": "<section class=\"ds-rung\"><h3>&#9670; Vigilancia</h3><a>P02 Norte</a></section>",
+      "css": ".ds-rung{background:#f2b705;color:#101820}.ds-rung h3{margin:0;padding:12px 16px 8px;font:700 24px/26px 'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.04em}.ds-rung a{display:block;padding:12px 16px;border-top:1px solid rgba(16,24,32,.5);font-weight:500}"
+    },
+    {
+      "name": "KPI Tile",
+      "kind": "card",
+      "refersTo": "kpi-tile",
+      "description": "White tile, 4px ink top rule, Condensed numeral.",
+      "html": "<div class=\"ds-kpi\"><h2>Alertas activas</h2><strong>3</strong></div>",
+      "css": ".ds-kpi{background:#fff;border:1px solid #d9d9d2;border-top:4px solid #101820;padding:8px 10px 12px}.ds-kpi h2{margin:0;font:600 13px/16px Barlow,sans-serif;color:#565f6a}.ds-kpi strong{display:block;font:700 40px/48px 'Barlow Condensed',sans-serif;color:#101820}"
+    },
+    {
+      "name": "Priority Indicator",
+      "kind": "chip",
+      "refersTo": "button",
+      "description": "Neutral-ink ascending bars plus label.",
+      "html": "<span class=\"ds-pri\"><i class=\"f\"></i><i class=\"f\"></i><i class=\"f\"></i><i></i> Alta</span>",
+      "css": ".ds-pri{display:inline-flex;align-items:end;gap:6px;color:#101820;font:400 14px Barlow,sans-serif}.ds-pri i{display:inline-block;width:3px;height:14px;background:#d9d9d2;margin-right:2px}.ds-pri i.f{background:#101820}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Semáforo",
+    "overview": "The console is a civil-protection alert ladder, not a card grid. The worst current point status fills a full-width signal band; points sit on rungs in solid signal fields. Everything else is a quiet bulletin of off-white ground, ink type, hairlines and square corners.",
+    "keyCharacteristics": [
+      "Worst status owns the screen (band), points live on a ladder of solid fields.",
+      "Status is always colour plus label plus drawn glyph, never colour alone.",
+      "Condensed uppercase headings, huge tabular numerals, plain Barlow body.",
+      "Square corners, 1px hairlines, flat surfaces.",
+      "Neutral ink for everything that is not point status."
+    ],
+    "rules": [
+      {
+        "name": "The Status-Only Rule",
+        "body": "Green, amber, red and hatch mean point status and nothing else. Work-order priority and step indicators, buttons, and chrome stay in neutral ink.",
+        "section": "colors"
+      },
+      {
+        "name": "The Never-Colour-Alone Rule",
+        "body": "Every status shows a colour, a text label and a drawn glyph, also on map markers.",
+        "section": "colors"
+      },
+      {
+        "name": "The Condensed-Is-Signage Rule",
+        "body": "Barlow Condensed is for headings, folios and numerals; running text and form controls are Barlow.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-Hairline Rule",
+        "body": "Separate with 1px line borders or the 4px KPI top rule, never shadows.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do pair every status with colour, label and drawn glyph.",
+      "Do keep priority, step and chrome in neutral ink.",
+      "Do keep corners square, surfaces flat, borders 1px.",
+      "Do respect prefers-reduced-motion.",
+      "Do keep motion at 180 ms with cubic-bezier(0.16, 1, 0.3, 1), only for status changes.",
+      "Do size touch targets to at least 44 px.",
+      "Do write styles in component stylesheets or classes: no inline style attributes; component styles use a per-request nonce.",
+      "Do bundle fonts locally; no external CDNs."
+    ],
+    "donts": [
+      "Don't use green, amber, red or hatch for anything but point status.",
+      "Don't show Sin datos as 0 or a flat colour.",
+      "Don't add shadows, rounded corners, gradients or glassy surfaces.",
+      "Don't set style attributes or [style] bindings in templates.",
+      "Don't imitate official Ayuntamiento seals, logos or colours."
+    ]
+  }
+}
