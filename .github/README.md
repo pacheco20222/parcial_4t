@@ -40,7 +40,7 @@ new application endpoints or events.
 
 Dependabot checks NuGet, both uv projects, every Dockerfile directory and Actions
 weekly. All third-party actions are pinned to full commit SHAs (version in comment).
-CodeQL requires code scanning enabled/available for the repository; fork PR tokens
+CodeQL is skipped while the repo is private (code scanning needs GitHub Advanced Security); fork PR tokens
 may restrict SARIF upload. Organization-owned repositories may need a Gitleaks
 license configured separately as `GITLEAKS_LICENSE` in the action environment.
 
