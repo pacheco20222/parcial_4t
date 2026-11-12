@@ -6,7 +6,9 @@ owned by UID 1000. Run via `docker compose up --build -d caddy` after services.
 `tls internal` uses a persistent local CA, independent of MQTT secrets.
 
 Routes: `/api/telemetry/*` and `/api/ops/*` strip prefix; `/hubs/*` and `/soc/*`
-retain prefix. WebSocket upgrades automatic. `/` serves placeholder SPA.
+retain prefix. WebSocket upgrades automatic. `/` serves the Angular SPA, built from `frontend/`
+in the Dockerfile's first stage (build context = repo root); `templates` fills a
+per-request CSP style nonce (`{http.request.uuid}`) into `index.html`.
 One-MB request limit, security headers, JSON access logs on stdout. No events.
 
 Static checks: telemetry venv Python `-m unittest discover -s scripts/tests -p test_compose.py -v`.

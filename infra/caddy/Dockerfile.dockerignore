@@ -1,0 +1,6 @@
+# Build context is the repo root (compose); send only the SPA sources.
+*
+!frontend/
+frontend/node_modules
+frontend/dist
+frontend/.angular

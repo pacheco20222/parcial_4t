@@ -11,7 +11,7 @@ https://{$SITE_ADDRESS:localhost} {
 	tls internal
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; frame-ancestors 'none'"
+		Content-Security-Policy "default-src 'self'; style-src 'self' 'nonce-{http.request.uuid}'; connect-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; frame-ancestors 'none'"
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
@@ -40,6 +40,8 @@ https://{$SITE_ADDRESS:localhost} {
 	handle {
 		root * /srv/www
 		try_files {path} /index.html
+		# Fills the per-request CSP nonce ({http.request.uuid}) into index.html (ngCspNonce).
+		templates
 		file_server
 	}
 }
