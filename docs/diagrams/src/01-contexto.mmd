@@ -1,0 +1,16 @@
+flowchart LR
+    ciudadano([Ciudadano<br/>navegador móvil])
+    operador([Operador municipal<br/>web / móvil])
+    supervisor([Supervisor / Administrador])
+    analista([Analista SOC])
+    subgraph sis[Sistema de Monitoreo de Inundaciones de Mérida]
+        core[Plataforma de Monitoreo<br/>y Alerta Temprana]
+    end
+    sensores[[Sensores de campo<br/>simulados: profundidad + lluvia]]
+    meteo[(API Open-Meteo<br/>pronóstico)]
+    sensores -- MQTT sobre TLS --> core
+    core -- HTTPS, consulta cada hora --> meteo
+    ciudadano -- HTTPS: consulta estado, envía reporte --> core
+    operador -- HTTPS + WSS: tablero en vivo, órdenes de trabajo --> core
+    supervisor -- HTTPS: usuarios, umbrales, auditoría --> core
+    analista -- HTTPS: alertas SIEM en Grafana --> core

@@ -1,0 +1,15 @@
+sequenceDiagram
+    autonumber
+    participant D as SPA Angular
+    participant C as Caddy
+    participant O as Servicio Operaciones
+    participant T as Servicio Telemetría
+    D->>C: POST /api/ops/auth/login (correo, contraseña)
+    C->>O: reenvía
+    O->>O: ASP.NET Identity verifica (PBKDF2), bloqueo, MFA si el rol lo exige
+    O-->>D: Set-Cookie flood_at=JWT (RS256, 15 min); HttpOnly; Secure; SameSite=Strict
+    D->>C: GET /api/telemetry/kpis (cookie + X-Requested-With)
+    C->>T: reenvía
+    T->>T: verifica firma JWT con clave pública de ops, exp, iss, aud y rol
+    T-->>D: 200 KPIs
+    Note over O,T: Clave privada solo en ops-service (secreto Docker).<br/>Clave pública montada solo lectura en telemetry-service.

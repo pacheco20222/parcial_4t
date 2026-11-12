@@ -192,9 +192,13 @@ services:
     user: "1000:1000"
     mem_limit: 128m
     cap_add: [NET_BIND_SERVICE]
+    secrets: [gate_password_hash]
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
       GATEWAY_HTTPS_PORT: ${GATEWAY_HTTPS_PORT:-8443}
+      GATE_MODE: ${GATE_MODE:-off}
+      TLS_MODE: ${TLS_MODE:-internal}
+      GATE_USER: ${GATE_USER:-demo}
       XDG_DATA_HOME: /data
       XDG_CONFIG_HOME: /config
     ports:
@@ -326,3 +330,4 @@ secrets:
   seed_supervisor_password: {file: ./secrets/seed_supervisor_password}
   seed_operator_password: {file: ./secrets/seed_operator_password}
   grafana_admin_password: {file: ./secrets/grafana_admin_password}
+  gate_password_hash: {file: ./secrets/gate_password_hash}

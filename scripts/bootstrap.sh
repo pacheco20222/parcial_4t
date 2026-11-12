@@ -133,6 +133,20 @@ PY
     eclipse-mosquitto:2.0.22 -U /work/mosquitto_passwd
   install_secret mosquitto_passwd
 fi
+# Site gate for the public demo (used only when GATE_MODE=on). The hash is derived
+# from gate_password; existing files are kept unless --force.
+if needs gate_password; then
+  openssl rand -hex 16 | tr -d '\n' > "$work/gate_password"
+  install_secret gate_password
+  rm -f -- "$secrets/gate_password_hash"
+fi
+if needs gate_password_hash; then
+  # Password travels via stdin, never argv.
+  docker run --rm -i caddy:2.10.2-alpine caddy hash-password --algorithm bcrypt \
+    < <(cat "$secrets/gate_password"; echo) | tr -d '\n' > "$work/gate_password_hash"
+  [[ -s "$work/gate_password_hash" ]] || { echo 'gate hash generation failed' >&2; exit 1; }
+  install_secret gate_password_hash
+fi
 # Also repair modes on existing files without changing their contents.
 find "$secrets" -maxdepth 1 -type f -exec chmod 644 {} +
 printf 'Bootstrap complete. Secrets stored in %s\n' "$secrets"

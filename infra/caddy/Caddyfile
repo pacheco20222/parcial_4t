@@ -3,12 +3,33 @@
 	auto_https disable_redirects
 }
 
+# Site gate (temporary public demo): GATE_MODE=on puts basic_auth in front of everything.
+# Basic credentials are removed before proxying so upstreams never see them.
+(gate-on) {
+	basic_auth {
+		{$GATE_USER:demo} {file./run/secrets/gate_password_hash}
+	}
+	request_header -Authorization
+}
+(gate-off) {
+	# no gate
+}
+
+# TLS: TLS_MODE=internal (local CA, default) or acme (Let's Encrypt on the public VPS; needs 80/443 open).
+(tls-internal) {
+	tls internal
+}
+(tls-acme) {
+	# automatic HTTPS via ACME
+}
+
 http://{$SITE_ADDRESS:localhost} {
 	redir https://{host}:{$GATEWAY_HTTPS_PORT:8443}{uri} 308
 }
 
 https://{$SITE_ADDRESS:localhost} {
-	tls internal
+	import tls-{$TLS_MODE:internal}
+	import gate-{$GATE_MODE:off}
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		Content-Security-Policy "default-src 'self'; style-src 'self' 'nonce-{http.request.uuid}'; connect-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; frame-ancestors 'none'"

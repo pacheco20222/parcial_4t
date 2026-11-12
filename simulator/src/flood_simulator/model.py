@@ -8,6 +8,10 @@ from uuid import UUID
 SCENARIOS = {"dry", "light_rain", "storm", "sensor_fault", "cycle"}
 
 
+OVERFLOW_CM = 60.0
+OVERFLOW_PER_MIN = 0.3
+
+
 @dataclass(frozen=True)
 class Station:
     point_id: str
@@ -43,7 +47,12 @@ def advance_depth(depth: float, rain_mm_hour: float, seconds: float, station: St
     """Runoff concentration minus per-point drainage/elevation effect, cm."""
     if any(not math.isfinite(x) or x < 0 for x in (depth, rain_mm_hour, seconds)):
         raise ValueError("model inputs must be finite and nonnegative")
-    rate = rain_mm_hour * 0.09 * station.catchment - station.drainage_cm_min
+    # Overflow above OVERFLOW_CM keeps storm peaks ~75-85 cm, inside the sensor range.
+    rate = (
+        rain_mm_hour * 0.09 * station.catchment
+        - station.drainage_cm_min
+        - OVERFLOW_PER_MIN * max(0.0, depth - OVERFLOW_CM)
+    )
     return max(0.0, depth + max(-30.0, min(30.0, rate)) * seconds / 60)
 
 

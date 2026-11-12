@@ -40,11 +40,12 @@ public static class Endpoints
             return Results.Created($"/reports/{report.Id}", new { report.Id, report.Folio, report.Status });
         }).RequireRateLimiting("reports");
         var alerts = app.MapGroup("/alerts").RequireAuthorization("Operator");
-        alerts.MapGet("/", async (OpsDb db, AlertStatus? status, string? pointId, int? limit, int? offset) =>
+        alerts.MapGet("/", async (OpsDb db, AlertStatus? status, AlertLevel? level, string? pointId, int? limit, int? offset) =>
         {
-            if (status.HasValue && !Enum.IsDefined(status.Value)) return Results.BadRequest();
+            if (status.HasValue && !Enum.IsDefined(status.Value) || level.HasValue && !Enum.IsDefined(level.Value)) return Results.BadRequest();
             var q = db.Alerts.AsNoTracking();
             if (status != null) q = q.Where(x => x.Status == status);
+            if (level != null) q = q.Where(x => x.Level == level);
             if (pointId != null) q = q.Where(x => x.PointId == pointId);
             return Results.Ok(await q.OrderByDescending(x => x.OpenedAt).ThenBy(x => x.Id).Skip(Offset(offset)).Take(Size(limit)).ToListAsync());
         });
@@ -117,14 +118,14 @@ public static class Endpoints
             report.LinkedWorkOrderId = input.WorkOrderId; Audit(db, http, "report_link", id);
             Wire.Enqueue(db, "report.updated", report); await db.SaveChangesAsync(); return Results.Ok(report);
         });
-        var crews = app.MapGroup("/crews").RequireAuthorization("Supervisor");
-        crews.MapGet("/", async (OpsDb db, int? limit, int? offset) => Results.Ok(await db.Crews.AsNoTracking().OrderBy(x => x.Name).ThenBy(x => x.Id).Skip(Offset(offset)).Take(Size(limit)).ToListAsync()));
+        var crews = app.MapGroup("/crews");
+        crews.MapGet("/", async (OpsDb db, int? limit, int? offset) => Results.Ok(await db.Crews.AsNoTracking().OrderBy(x => x.Name).ThenBy(x => x.Id).Skip(Offset(offset)).Take(Size(limit)).ToListAsync())).RequireAuthorization("Operator");
         crews.MapPost("/", async (CrewInput input, OpsDb db, HttpContext http) =>
         {
             if (!Text(input.Name, 100) || !Text(input.Zone, 100)) return Results.BadRequest();
             var crew = new Crew { Name = input.Name.Trim(), Zone = input.Zone.Trim() }; db.Crews.Add(crew);
             Audit(db, http, "crew_create", crew.Id); await db.SaveChangesAsync(); return Results.Created($"/crews/{crew.Id}", crew);
-        });
+        }).RequireAuthorization("Supervisor");
         app.MapGet("/kpis", Kpis).RequireAuthorization("Operator");
         var users = app.MapGroup("/users").RequireAuthorization("Admin");
         users.MapGet("/", async (OpsDb db, int? limit, int? offset) =>

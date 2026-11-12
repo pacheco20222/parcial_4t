@@ -1,0 +1,15 @@
+flowchart LR
+    subgraph fuentes[Fuentes de logs]
+        f1[Mosquitto<br/>auth, ACL denegadas]
+        f2[Servicio Telemetría<br/>validación, suplantación]
+        f3[Servicio Operaciones<br/>login, auditoría]
+        f4[Caddy<br/>accesos]
+        f5[PostgreSQL<br/>fallos de permisos]
+    end
+    f1 & f2 & f3 & f4 & f5 --> promtail[Promtail<br/>lee logs JSON de Docker]
+    promtail --> loki[(Loki<br/>almacén de logs)]
+    loki --> reglas{Reglas de alerta Grafana<br/>LogQL SR-01 a SR-07}
+    reglas -- coincidencia --> notif[Notificación al SOC<br/>punto de contacto Grafana]
+    notif --> triage[Triaje en Grafana]
+    triage --> contener[Contención: revocar credencial,<br/>bloquear IP, poner datos en cuarentena]
+    contener --> informe[Registro de incidente<br/>y lecciones aprendidas]

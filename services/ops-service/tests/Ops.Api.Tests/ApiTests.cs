@@ -44,11 +44,19 @@ public class ApiTests
     [InlineData(null, "/work-orders", 401)] [InlineData("Operator", "/work-orders", 200)]
     [InlineData("Operator", "/users", 403)] [InlineData("Supervisor", "/audit", 403)]
     [InlineData("Admin", "/users", 200)] [InlineData("Admin", "/audit", 200)]
-    [InlineData("Operator", "/crews", 403)] [InlineData("Supervisor", "/crews", 200)]
+    [InlineData("Operator", "/crews", 200)] [InlineData("Supervisor", "/crews", 200)]
     public async Task RolePolicies(string? role, string path, int expected)
     {
         await using var factory = new ApiFactory(); using var client = factory.Client(role);
         Assert.Equal(expected, (int)(await client.GetAsync(path)).StatusCode);
+    }
+    [Fact]
+    public async Task CrewCreateRequiresSupervisor()
+    {
+        await using var factory = new ApiFactory();
+        using var operatorClient = factory.Client("Operator"); using var supervisor = factory.Client("Supervisor");
+        Assert.Equal(HttpStatusCode.Forbidden, (await operatorClient.PostAsJsonAsync("/crews", new { name = "C1", zone = "Z" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await supervisor.PostAsJsonAsync("/crews", new { name = "C1", zone = "Z" })).StatusCode);
     }
     [Fact]
     public async Task CitizenReportValidationAndPrivacyResponse()
@@ -134,10 +142,14 @@ public class OperationsFlowTests
         await using var factory = new ApiFactory(); using var client = factory.Client("Operator");
         using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OpsDb>();
         for (var i = 0; i < 110; i++) db.Alerts.Add(new Alert { SourceEventId = Guid.NewGuid(), PointId = "P01", Level = AlertLevel.Watch, OpenedAt = DateTimeOffset.UtcNow });
-        db.Alerts.Add(new Alert { SourceEventId = Guid.NewGuid(), PointId = "P02", Status = AlertStatus.Closed }); await db.SaveChangesAsync();
+        db.Alerts.Add(new Alert { SourceEventId = Guid.NewGuid(), PointId = "P02", Level = AlertLevel.Alert, Status = AlertStatus.Closed }); await db.SaveChangesAsync();
         Assert.Equal(100, (await client.GetFromJsonAsync<JsonElement[]>("/alerts?limit=500"))!.Length);
         var filtered = await client.GetFromJsonAsync<JsonElement[]>("/alerts?pointId=P02&status=Closed"); Assert.Single(filtered!);
         Assert.Equal("P02", filtered![0].GetProperty("pointId").GetString());
+        Assert.Equal(110, (await client.GetFromJsonAsync<JsonElement[]>("/alerts?level=Watch&limit=100"))!.Length + (await client.GetFromJsonAsync<JsonElement[]>("/alerts?level=Watch&limit=100&offset=100"))!.Length);
+        Assert.Single((await client.GetFromJsonAsync<JsonElement[]>("/alerts?level=Alert"))!);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/alerts?level=Bogus")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/alerts?level=99")).StatusCode);
     }
     [Fact]
     public async Task EmptyKpisKeepResponseTimeUnknown()

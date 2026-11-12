@@ -1,0 +1,30 @@
+sequenceDiagram
+    autonumber
+    participant S as Simulador (OT)
+    participant M as Mosquitto (IDMZ)
+    participant T as Servicio Telemetría (FastAPI)
+    participant R as Redis
+    participant P as PostgreSQL
+    participant O as Servicio Operaciones (ASP.NET)
+    participant D as Tablero Angular
+    S->>M: PUBLISH merida/flood/{pointId}/{deviceId}/telemetry (QoS 1, TLS)
+    M->>T: entrega (suscrito a merida/flood/+/+/telemetry)
+    T->>T: valida esquema, rangos, marca de tiempo, deviceId = dueño del tópico
+    T->>R: SET dedup:{messageId} NX EX 86400
+    alt duplicado
+        T-->>T: descarta y registra en log
+    else nuevo
+        T->>P: INSERT telemetry.raw_reading + telemetry.clean_reading
+        T->>R: HSET latest:{pointId}
+        T->>R: PUBLISH events:telemetry
+        T->>T: máquina de estados (Normal / Vigilancia / Alerta / SinDatos)
+        opt cambió el estado
+            T->>R: XADD stream:point-status
+        end
+    end
+    R-->>O: XREADGROUP (grupo ops) evento de estado del punto
+    O->>P: INSERT ops.alert (+ ops.work_order si Alerta), idempotente por eventId
+    O->>R: XACK + PUBLISH events:ops
+    R-->>O: events:telemetry / events:ops (suscriptor)
+    O-->>D: Push SignalR: lectura, estado, alerta, orden de trabajo
+    D->>D: actualiza gráficas, mapa y KPIs (sin recargar)
