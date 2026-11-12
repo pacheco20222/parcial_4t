@@ -2,9 +2,6 @@
 name = "telemetry-service"
 version = "0.1.0"
 description = "Add your description here"
-authors = [
-    { name = "Jose Pacheco", email = "jrp2022@gmail.com" }
-]
 requires-python = ">=3.13"
 dependencies = [
     "aiomqtt>=2.5.1",
