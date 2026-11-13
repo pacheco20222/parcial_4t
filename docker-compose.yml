@@ -162,6 +162,24 @@ services:
       <<: *health
       test: [CMD, python, -c, 'import os; os.kill(1, 0)']
 
+  citizen-bot:
+    <<: *hardening
+    build: ./simulator
+    user: "10001:10001"
+    mem_limit: 128m
+    command: [python, -m, flood_simulator.citizen_bot]
+    environment:
+      CITIZEN_BOT_ENABLED: ${CITIZEN_BOT_ENABLED:-true}
+      CITIZEN_BOT_MIN_INTERVAL_SECONDS: ${CITIZEN_BOT_MIN_INTERVAL_SECONDS:-150}
+      PYTHONDONTWRITEBYTECODE: "1"
+    networks: [app_net]
+    depends_on:
+      telemetry-service: {condition: service_healthy}
+      ops-service: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      test: [CMD, python, -c, 'import os; os.kill(1, 0)']
+
   attack-sim:
     <<: *hardening
     build: ./simulator

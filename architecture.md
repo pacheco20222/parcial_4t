@@ -152,6 +152,7 @@ Rules: **no service reads another service's schema** (enforced by DB grants). Cr
 | `caddy` | TLS, HSTS/CSP headers, serves Angular build, routes `/api/telemetry/*`, `/api/ops/*`, `/hubs/*`, `/soc/*` | **Yes: 443 (and 80 → redirect)** |
 | `mosquitto` | MQTT broker, TLS, per-identity auth, per-topic ACLs, connection logging | No (internal); 8883 can be opened later for real devices with mTLS |
 | `simulator` | 5 virtual stations, scenarios (dry / light rain / storm / sensor fault) | No |
+| `citizen-bot` | Simulated citizens: public point status → severity-weighted, rate-bounded reports; same simulator image, no secrets | No |
 | `telemetry-service` | MQTT ingest → validate → dedup → persist → Redis latest → status machine → events; REST for points/readings/KPIs; hourly Open-Meteo pull | Only via Caddy |
 | `ops-service` | Auth (issues JWT), ERP/MES module, stream consumer, SignalR hub, audit | Only via Caddy |
 | `redis` | Streams, pub/sub, SignalR backplane, cache, rate limits, dedup | No |
@@ -222,6 +223,7 @@ flowchart LR
 | postgres | | | ✔ | | | |
 | mosquitto | | | | ✔ | ✔ | |
 | simulator | | | | | ✔ | |
+| citizen-bot | | ✔ (public HTTP APIs only) | | | | |
 | grafana / loki / promtail | | | | | | ✔ |
 
 `data_net`, `idmz_net`, `ot_net` are `internal: true` (no outbound internet). Telemetry service gets egress only for `api.open-meteo.com` (via `app_net` → host; in cloud enforced by egress rules).

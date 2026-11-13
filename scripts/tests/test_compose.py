@@ -26,6 +26,7 @@ class ComposeContractTests(unittest.TestCase):
             "telemetry-service": {"app_net", "data_net", "idmz_net"},
             "ops-service": {"app_net", "data_net"},
             "attack-sim": {"ot_net", "idmz_net"},
+            "citizen-bot": {"app_net"},
             "loki": {"mon_net"}, "promtail": {"mon_net"}, "grafana": {"mon_net"},
         }
         self.assertEqual(set(self.services), set(expected))
@@ -119,6 +120,35 @@ class ComposeContractTests(unittest.TestCase):
                      "Strict-Transport-Security", "frame-ancestors 'none'", "-Server",
                      "X-Content-Type-Options nosniff", "Permissions-Policy"]:
             self.assertIn(text, conf)
+
+    def test_citizen_bot_has_no_secrets_and_uses_simulator_image(self):
+        bot = self.services["citizen-bot"]
+        self.assertEqual(bot["build"], self.services["simulator"]["build"])
+        self.assertEqual(bot["command"], ["python", "-m", "flood_simulator.citizen_bot"])
+        self.assertEqual(bot.get("secrets", []), [])
+        self.assertEqual(bot["environment"]["CITIZEN_BOT_ENABLED"], "${CITIZEN_BOT_ENABLED:-true}")
+        self.assertEqual(bot["environment"]["CITIZEN_BOT_MIN_INTERVAL_SECONDS"], "${CITIZEN_BOT_MIN_INTERVAL_SECONDS:-150}")
+
+    def test_static_assets_bypass_spa_and_cache_policy(self):
+        conf = (ROOT / "infra/caddy/Caddyfile").read_text()
+        static = conf.split("handle @static {", 1)[1].split("\n\thandle {", 1)[0]
+        self.assertIn("file_server", static)
+        self.assertNotIn("try_files", static)
+        self.assertNotIn("templates", static)
+        for path in ["*.js", "*.css", "*.map", "*.woff2", "/media/*", "/assets/*"]:
+            self.assertIn(path, conf.split("handle @static", 1)[0])
+        self.assertIn('Cache-Control "public, max-age=31536000, immutable"', static)
+        hashed_pattern = re.search(r"path_regexp hashed (.+)", static).group(1)
+        for asset in ["/chunk-Z-GpFkFO.js", "/chunk-DN_O2-dD.js", "/main-L4322USE.js",
+                      "/media/barlow-latin-600-normal-IMDL24A2.woff"]:
+            self.assertIsNotNone(re.fullmatch(hashed_pattern, asset))
+        self.assertIsNone(re.fullmatch(hashed_pattern, "/favicon.svg"))
+        self.assertIn("file {path}", static)
+        self.assertIn("route {", static)  # preserve default -> immutable header override order
+        spa = conf.split("\n\thandle {", 1)[1]
+        self.assertIn('Cache-Control "no-cache"', spa)
+        self.assertIn("try_files {path} /index.html", spa)
+        self.assertIn("templates", spa)
 
     def test_database_uses_quoted_variables_and_schema_owners(self):
         script = (ROOT / "infra/postgres/10-init.sh").read_text()

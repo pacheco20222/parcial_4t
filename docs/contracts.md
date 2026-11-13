@@ -45,7 +45,7 @@ Services read secrets from files mounted at `/run/secrets/<name>` (Docker secret
 | `data_net` | 172.30.40.0/24 | yes |
 | `mon_net` | 172.30.50.0/24 | no |
 
-Membership per architecture.md §5. Gateway host port: `${GATEWAY_HTTPS_PORT:-8443}` → caddy 443.
+Membership per architecture.md §5. `citizen-bot` joins `app_net` only (no secrets); it calls the intentional public points/report endpoints as simulated citizens, with the required CSRF header and a minimum 150 s interval plus jitter (5 reports/10 min/IP limit). Its §9 JSON log events are `citizen_bot.report_sent`, `citizen_bot.skipped`, and `citizen_bot.error`. Gateway host port: `${GATEWAY_HTTPS_PORT:-8443}` → caddy 443.
 
 ## 4. PostgreSQL
 

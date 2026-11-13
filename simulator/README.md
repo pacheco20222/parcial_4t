@@ -43,6 +43,27 @@ Publishes `merida/flood/{pointId}/{deviceId}/telemetry`, using contracts §5:
 JSON stdout logs include `ts`, `level`, `service`, `event`; credentials never logged.
 Transport events use `mqtt.*`; simulator events use `simulator.*`.
 
+## Simulated citizen reports
+
+`docker compose up -d citizen-bot` runs the same image with
+`python -m flood_simulator.citizen_bot`. No secrets or inbound ports; `app_net` only.
+Uses stdlib HTTP: GET `http://telemetry-service:8000/public/points`, then POST
+`http://ops-service:8080/public/reports` with the required CSRF header.
+
+- `CITIZEN_BOT_ENABLED=true` (default); `false` keeps the process idle.
+- `CITIZEN_BOT_MIN_INTERVAL_SECONDS=150` (default and minimum), plus 0–30 s jitter.
+- Alert/Watch selections are weighted 8:3; approximately 10% of selections use
+  Normal points when both groups exist. NoData points are skipped. Reports use
+  varied Mexican Spanish, generic street references and occasional duplicates.
+- GET retries at most three times, HTTP timeout 10 s; POST is never retried
+  immediately. HTTP 429 waits at least 600 s (numeric Retry-After respected up
+  to 3600 s). SIGTERM interrupts waits; in-flight HTTP finishes within its timeout.
+- JSON log events: `citizen_bot.report_sent`, `citizen_bot.skipped`,
+  `citizen_bot.error`; report descriptions and HTTP error bodies are never logged.
+
+Run `.venv/bin/pytest -q tests/test_citizen_bot.py` for focused offline tests.
+Orchestrator must verify report creation and rate limits in Compose.
+
 ## Lab attack demo
 
 Own lab only. Refuses before reading secrets or connecting unless confirmed:
