@@ -80,7 +80,26 @@ Same TLS settings and mounted secrets. `ATTACK_SCENARIO`:
 - `flood`: DEV-P01-A sends 30 distinct messages across ten seconds (SR-04).
 - `spoof`: P01's topic carries DEV-P02-A / P02 identity (`telemetry.topic_mismatch`).
 - `foreign_network`: valid DEV-P03-A sends one P03 reading via IDMZ (SR-01).
-- `all`: runs those five sequentially, then exits.
+- `login_failures`: ten failed POSTs to `http://ops-service:8080/auth/login`,
+  three seconds apart, with `X-Requested-With: XMLHttpRequest` (SR-06).
+  Only `intruso@example.invalid` is targeted; no seeded account can be locked.
+  Stops on 429 or any unexpected response; five-second HTTP timeout, no retries,
+  redirects or proxy routing. Response bodies and credentials are never logged.
+- `implausible_jump`: valid DEV-P04-A publishes 5 then 151 cm on its own P04 topic,
+  twenty seconds apart with fresh UTC timestamps and distinct IDs (SR-05).
+  The >30 cm jump triggers quality checks; exceeding the 150 cm sensor range
+  also guarantees suspect quality if concurrent telemetry disrupts the baseline.
+  Telemetry owns quality checks; suspect readings never change flood status.
+- `all`: runs all seven sequentially, then exits.
+
+Automatic lab demo: `docker compose --profile soc-demo up -d attack-scheduler`.
+Runs the same module with `--schedule` (also enabled by `ATTACK_SCHEDULE=on`),
+requiring the same lab guard and mounted secrets. `ATTACK_INTERVAL_MINUTES=12`
+is the nominal wait, minimum 5, with ±30% jitter before each run including startup.
+One scenario runs per wait; weights in the order above are 3/6/1/6/6/3/4,
+making flood rare. `attack.scheduled_run` records the selection; failed/raised
+scenarios log `attack.scenario_failed` and scheduling continues without immediate retry.
+SIGTERM interrupts waits; in-flight HTTP finishes within its timeout.
 
 `foreign_network` connects TCP to `ATTACK_IDMZ_BROKER_HOST` (default `172.30.20.10`),
 restricted to usable IPv4 hosts in lab `172.30.20.0/24`. Keep `MQTT_HOST=mosquitto`:
@@ -103,6 +122,9 @@ Build context: `simulator/`. Dockerfile pins Python 3.13.9 slim-bookworm and uv 
 runs `uv sync --frozen --no-dev`, then uses UID/GID 10001 with no exposed ports.
 Default command runs telemetry; reuse image for attack-sim with Compose command
 `["python", "-m", "flood_simulator.attack_sim"]`, confirmation env and lab-only profile.
-Attach OT and IDMZ networks for attack-sim; mount CA and device secrets readable by UID 10001. No new deps.
+Attach OT, IDMZ and app networks for both attack services (app only for Ops login);
+mount CA and device secrets readable by UID 10001. No new deps.
 Orchestrator must build/run the image and verify broker auth, ACL denials, reconnect,
-NoData/status transitions and SR-01/02/03/04 in the complete Compose stack.
+NoData/status transitions and SR-01–06 in the complete Compose stack. Concurrent
+sensor traffic/rate limits can affect delivery of the P04 pair; verify suspect logs
+and absence of attack-induced flood alerts live.

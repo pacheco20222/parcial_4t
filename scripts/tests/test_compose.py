@@ -25,7 +25,8 @@ class ComposeContractTests(unittest.TestCase):
             "mosquitto": {"ot_net", "idmz_net"}, "simulator": {"ot_net"},
             "telemetry-service": {"app_net", "data_net", "idmz_net"},
             "ops-service": {"app_net", "data_net"},
-            "attack-sim": {"ot_net", "idmz_net"},
+            "attack-sim": {"ot_net", "idmz_net", "app_net"},
+            "attack-scheduler": {"ot_net", "idmz_net", "app_net"},
             "citizen-bot": {"app_net"},
             "loki": {"mon_net"}, "promtail": {"mon_net"}, "grafana": {"mon_net"},
         }
@@ -128,6 +129,20 @@ class ComposeContractTests(unittest.TestCase):
         self.assertEqual(bot.get("secrets", []), [])
         self.assertEqual(bot["environment"]["CITIZEN_BOT_ENABLED"], "${CITIZEN_BOT_ENABLED:-true}")
         self.assertEqual(bot["environment"]["CITIZEN_BOT_MIN_INTERVAL_SECONDS"], "${CITIZEN_BOT_MIN_INTERVAL_SECONDS:-150}")
+
+    def test_attack_scheduler_is_opt_in_and_matches_one_shot_hardening(self):
+        scheduler = self.services["attack-scheduler"]
+        one_shot = self.services["attack-sim"]
+        self.assertEqual(scheduler["profiles"], ["soc-demo"])
+        self.assertEqual(scheduler["command"], ["python", "-m", "flood_simulator.attack_sim", "--schedule"])
+        self.assertEqual(scheduler["environment"]["ATTACK_SIM_CONFIRM"], "lab")
+        self.assertEqual(scheduler["environment"]["ATTACK_INTERVAL_MINUTES"], "${ATTACK_INTERVAL_MINUTES:-12}")
+        for key in ["build", "user", "read_only", "cap_drop", "security_opt", "secrets",
+                    "mem_limit", "networks", "extra_hosts", "depends_on", "healthcheck"]:
+            self.assertEqual(scheduler[key], one_shot[key], key)
+        deploy = (ROOT / "scripts/deploy-vps.sh").read_text()
+        self.assertIn("\nCOMPOSE_PROFILES=soc-demo\n", deploy)
+        self.assertIn("\nATTACK_INTERVAL_MINUTES=${ATTACK_INTERVAL_MINUTES:-12}\n", deploy)
 
     def test_static_assets_bypass_spa_and_cache_policy(self):
         conf = (ROOT / "infra/caddy/Caddyfile").read_text()

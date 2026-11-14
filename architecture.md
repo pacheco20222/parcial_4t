@@ -159,6 +159,7 @@ Rules: **no service reads another service's schema** (enforced by DB grants). Cr
 | `postgres` | System of record, TimescaleDB hypertable for readings | No |
 | `promtail`/`loki`/`grafana` | Log collection, SIEM detection rules, SOC dashboard | Grafana only via Caddy, admin-only |
 | `attack-sim` (profile `demo`) | Runs SIEM demo scenarios against our own stack only | No |
+| `attack-scheduler` (profile `soc-demo`) | Same simulator image; one weighted lab attack every nominal 12 min ±30%; SR-01–06, flood rare, graceful shutdown | No |
 
 ---
 
@@ -224,6 +225,7 @@ flowchart LR
 | mosquitto | | | | ✔ | ✔ | |
 | simulator | | | | | ✔ | |
 | citizen-bot | | ✔ (public HTTP APIs only) | | | | |
+| attack-sim / attack-scheduler | | ✔ (Ops failed logins only) | | ✔ | ✔ | |
 | grafana / loki / promtail | | | | | | ✔ |
 
 `data_net`, `idmz_net`, `ot_net` are `internal: true` (no outbound internet). Telemetry service gets egress only for `api.open-meteo.com` (via `app_net` → host; in cloud enforced by egress rules).
@@ -244,6 +246,8 @@ flowchart LR
 | F10 | telemetry-service | api.open-meteo.com | 443/TCP HTTPS | Forecast pull |
 | F11 | promtail | Docker log files | read-only mount | Log shipping |
 | F12 (cloud, later) | admin IP only | host | 22/TCP SSH (key-only) | Administration |
+| F13 | attack-sim, attack-scheduler | mosquitto | 8883/TCP MQTT+TLS | Guarded lab SIEM scenarios, device credentials from files |
+| F14 | attack-sim, attack-scheduler | ops-service | 8080/TCP HTTP (internal) | Failed logins for nonexistent lab account; CSRF header required |
 
 ---
 

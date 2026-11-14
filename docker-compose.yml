@@ -180,7 +180,7 @@ services:
       <<: *health
       test: [CMD, python, -c, 'import os; os.kill(1, 0)']
 
-  attack-sim:
+  attack-sim: &attack-demo
     <<: *hardening
     build: ./simulator
     profiles: [demo]
@@ -193,7 +193,7 @@ services:
     secrets: [ca.crt, mqtt_devices.json]
     # Force IDMZ routing while retaining the certificate SAN hostname.
     extra_hosts: ["mosquitto:172.30.20.10"]
-    networks: [ot_net, idmz_net]
+    networks: [ot_net, idmz_net, app_net]
     depends_on:
       mosquitto: {condition: service_healthy}
       telemetry-service: {condition: service_healthy}
@@ -201,6 +201,15 @@ services:
     healthcheck:
       <<: *health
       test: [CMD, python, -c, 'import os; os.kill(1, 0)']
+
+  attack-scheduler:
+    <<: *attack-demo
+    profiles: [soc-demo]
+    command: [python, -m, flood_simulator.attack_sim, --schedule]
+    environment:
+      <<: *simulator-env
+      ATTACK_SIM_CONFIRM: lab
+      ATTACK_INTERVAL_MINUTES: ${ATTACK_INTERVAL_MINUTES:-12}
 
   caddy:
     <<: *hardening

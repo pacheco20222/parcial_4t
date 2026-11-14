@@ -47,6 +47,8 @@ Services read secrets from files mounted at `/run/secrets/<name>` (Docker secret
 
 Membership per architecture.md §5. `citizen-bot` joins `app_net` only (no secrets); it calls the intentional public points/report endpoints as simulated citizens, with the required CSRF header and a minimum 150 s interval plus jitter (5 reports/10 min/IP limit). Its §9 JSON log events are `citizen_bot.report_sent`, `citizen_bot.skipped`, and `citizen_bot.error`. Gateway host port: `${GATEWAY_HTTPS_PORT:-8443}` → caddy 443.
 
+`attack-sim` (profile `demo`) and `attack-scheduler` (profile `soc-demo`, same simulator image/hardening/secrets) join `ot_net`, `idmz_net` and `app_net`; app membership is only for failed logins to `ops-service:8080/auth/login` with the CSRF header and fixed nonexistent `intruso@example.invalid`. Both require `ATTACK_SIM_CONFIRM=lab`; scheduler logs §9 JSON `attack.scheduled_run` with scenario.
+
 ## 4. PostgreSQL
 
 - DB `flood`, image TimescaleDB (pg17). Init creates extension `timescaledb`, schemas `telemetry` and `ops`, roles `telemetry_svc` (owner of `telemetry`) and `ops_svc` (owner of `ops`). `REVOKE ALL ON SCHEMA public FROM PUBLIC`; neither role has rights on the other schema. Each service runs its own migrations at startup (Alembic / EF Core) inside its own schema, using `search_path` = its schema.
