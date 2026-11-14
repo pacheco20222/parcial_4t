@@ -33,7 +33,7 @@ INTERVAL_SECONDS=${INTERVAL_SECONDS:-10}
 EOF
 chmod 600 .env
 
-git pull --ff-only
+[[ "${SKIP_PULL:-0}" == "1" ]] || git pull --ff-only   # SKIP_PULL=1 when code arrives via git bundle (private repo)
 bash scripts/bootstrap.sh                       # only creates missing secrets
 # Low CPU/IO priority so image builds don't slow down other services on a shared host.
 nice -n 10 ionice -c3 docker compose build
