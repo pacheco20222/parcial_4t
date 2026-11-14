@@ -71,6 +71,8 @@ def main():
     check("telemetry healthz", status == 200)
     status, _ = call("GET", "/api/ops/healthz")
     check("ops healthz", status == 200)
+    status, _ = call("GET", "/soc/api/health")
+    check("grafana (SOC) up", status == 200)
     status, points = call("GET", "/api/telemetry/public/points")
     check("public points = 5", status == 200 and len(points or []) == 5)
     check("readings ingested", bool(points) and all(p.get("updatedAt") for p in points))
