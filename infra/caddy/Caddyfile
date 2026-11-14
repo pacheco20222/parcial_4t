@@ -30,9 +30,12 @@ http://{$SITE_ADDRESS:localhost} {
 https://{$SITE_ADDRESS:localhost} {
 	import tls-{$TLS_MODE:internal}
 	import gate-{$GATE_MODE:off}
+	@app not path /soc/*
+	header @app Content-Security-Policy "default-src 'self'; style-src 'self' 'nonce-{http.request.uuid}'; connect-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; frame-ancestors 'none'"
+	# Grafana's UI needs inline styles/scripts and eval: relaxed CSP scoped to the admin-only SOC console.
+	header /soc/* Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		Content-Security-Policy "default-src 'self'; style-src 'self' 'nonce-{http.request.uuid}'; connect-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; frame-ancestors 'none'"
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
