@@ -607,7 +607,7 @@ CD (push images to GHCR + deploy to VM with approval + rollback by SHA tag) is d
 
 **Local:** `docker compose up` on a developer machine — the same definition that runs in the cloud (Caddy internal CA for `https://localhost`).
 
-**Cloud (presentation): IaaS — one Hostinger VPS (Ubuntu LTS, KVM 2: 2 vCPU / 8 GB), Docker Compose.** Short-lived: deployed for the demo, deleted afterwards. Steps: [docs/deploy-vps.md](docs/deploy-vps.md).
+**Cloud (presentation): IaaS — one Hostinger VPS (Ubuntu LTS, KVM 2: 2 vCPU / 8 GB), Docker Compose.** Short-lived: deployed for the demo, deleted afterwards. The VPS is shared with other projects, so the host nginx (certbot TLS) proxies our hostname to Caddy on `127.0.0.1:8443`; our stack opens no public ports. Steps: [docs/deploy-vps.md](docs/deploy-vps.md).
 
 ```mermaid
 flowchart TB
