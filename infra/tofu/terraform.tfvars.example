@@ -1,0 +1,8 @@
+# cp terraform.tfvars.example terraform.tfvars  (git-ignored). No secrets here.
+# Secrets via env:  export TF_VAR_hostinger_api_token="$HOSTINGER_API_TOKEN"
+#                   export TF_VAR_state_passphrase="<16+ chars>"
+admin_cidr     = "203.0.113.7/32"
+ssh_public_key = "ssh-ed25519 AAAA... you@laptop"
+data_center_id = 0 # look up: tofu console -> data.hostinger_vps_data_centers
+# plan         = "hostingercom-vps-kvm2-usd-1m"
+# repo_ref     = "main"

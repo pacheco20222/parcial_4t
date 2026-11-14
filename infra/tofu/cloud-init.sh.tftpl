@@ -1,0 +1,47 @@
+#!/bin/bash
+# Post-install script (runs once as root after OS install). Dedicated VPS: Caddy owns 80/443.
+set -euxo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update
+apt-get -y upgrade
+apt-get -y install ca-certificates curl git python3 ufw unattended-upgrades
+
+# Non-root deploy user, key-only SSH
+id deploy >/dev/null 2>&1 || adduser --disabled-password --gecos "" deploy
+usermod -aG sudo deploy
+echo "deploy ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-deploy
+chmod 440 /etc/sudoers.d/90-deploy
+install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+echo '${ssh_public_key}' > /home/deploy/.ssh/authorized_keys
+chown deploy:deploy /home/deploy/.ssh/authorized_keys
+chmod 600 /home/deploy/.ssh/authorized_keys
+
+# Docker + compose plugin (official repo)
+curl -fsSL https://get.docker.com | sh
+usermod -aG docker deploy
+
+# Firewall: SSH from admin CIDR only, HTTP/HTTPS public.
+# Docker bypasses ufw for published ports: only 80/443 are published by this stack.
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow from ${admin_cidr} to any port 22 proto tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw --force enable
+
+# Harden SSH last (deploy key already installed above)
+cat > /etc/ssh/sshd_config.d/99-hardening.conf <<'SSHD'
+PermitRootLogin no
+PasswordAuthentication no
+SSHD
+systemctl restart ssh
+
+# Deploy as deploy user
+IP=$(curl -4fsS --max-time 10 https://api.ipify.org || ip -4 route get 1.1.1.1 | awk '{for(i=1;i<NF;i++) if($i=="src") print $(i+1)}')
+SITE=$(echo "$IP" | tr . -).sslip.io
+install -d -o deploy -g deploy /opt/parcial_4t
+sudo -u deploy git clone --branch '${repo_ref}' '${repo_url}' /opt/parcial_4t
+cd /opt/parcial_4t
+# New group membership is not active in this shell: run via sg.
+sudo -u deploy -H bash -c "cd /opt/parcial_4t && sg docker -c 'BEHIND_PROXY=0 SITE_ADDRESS=$SITE bash scripts/deploy-vps.sh'"

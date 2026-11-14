@@ -1,0 +1,63 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bundle main for the private-repository checkout
+        run: git bundle create deploy.bundle main
+      - name: Send bundle to the forced-command receiver
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/parcial4t_cd_key"
+          known_hosts="$RUNNER_TEMP/parcial4t_cd_known_hosts"
+          trap 'shred -u -- "$key"' EXIT
+          : "${VPS_SSH_KEY:?missing VPS_SSH_KEY}" "${VPS_KNOWN_HOSTS:?missing VPS_KNOWN_HOSTS}"
+          : "${VPS_USER:?missing VPS_USER}" "${VPS_HOST:?missing VPS_HOST}"
+          printf '%s\n' "$VPS_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$known_hosts"
+          ssh -i "$key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts" \
+            -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+            -l "$VPS_USER" -- "$VPS_HOST" < deploy.bundle
+      - name: Check public telemetry health through the site gate
+        env:
+          GATE_USER: ${{ secrets.GATE_USER }}
+          GATE_PASSWORD: ${{ secrets.GATE_PASSWORD }}
+          SITE: ${{ vars.SITE_ADDRESS || secrets.SITE_ADDRESS }}
+        run: |
+          set -euo pipefail
+          : "${GATE_USER:?missing GATE_USER}" "${GATE_PASSWORD:?missing GATE_PASSWORD}" "${SITE:?missing SITE_ADDRESS}"
+          curl -fsS --connect-timeout 15 --max-time 60 \
+            -u "$GATE_USER:$GATE_PASSWORD" "https://$SITE/api/telemetry/healthz"
+      - name: Always destroy the temporary SSH key
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/parcial4t_cd_key" ]]; then
+            shred -u -- "$RUNNER_TEMP/parcial4t_cd_key"
+          fi
+          rm -f -- "$RUNNER_TEMP/parcial4t_cd_known_hosts"
