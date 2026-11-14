@@ -1,5 +1,7 @@
 import json
 import threading
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -47,12 +49,17 @@ class Clock:
 
 @pytest.mark.parametrize("scenario,count", [
     ("bruteforce", 8), ("acl_violation", 1), ("flood", 1), ("spoof", 1),
-    ("foreign_network", 1),
+    ("foreign_network", 1), ("implausible_jump", 1),
 ])
 def test_bounded_attack_scenarios(monkeypatch, scenario, count):
     clients = []
     clock = Clock()
     monkeypatch.delenv("ATTACK_IDMZ_BROKER_HOST", raising=False)
+    if scenario == "implausible_jump":
+        started = datetime.now(UTC)
+        monkeypatch.setattr(attack_sim, "datetime", SimpleNamespace(
+            now=lambda tz: started + timedelta(seconds=clock.now),
+        ))
 
     class FakeClient:
         def __init__(self, config, device_id, *, password, reconnect, connect_host=None):
@@ -111,6 +118,17 @@ def test_bounded_attack_scenarios(monkeypatch, scenario, count):
         assert len(clients[0].messages) == 30
         assert clients[0].messages[-1][2] < 10
         assert all(m[0] == topic(STATIONS[0]) for m in clients[0].messages)
+    if scenario == "implausible_jump":
+        client = clients[0]
+        assert client.device_id == "DEV-P04-A"
+        assert client.password is None
+        assert [m[0] for m in client.messages] == [topic(STATIONS[3])] * 2
+        assert [m[1]["waterDepthCm"] for m in client.messages] == [5.0, 151.0]
+        assert [m[2] for m in client.messages] == [0, 20]
+        assert client.messages[0][1]["messageId"] != client.messages[1][1]["messageId"]
+        assert all(m[1]["deviceId"] == client.device_id for m in client.messages)
+        timestamps = [datetime.fromisoformat(m[1]["capturedAt"]) for m in client.messages]
+        assert (timestamps[1] - timestamps[0]).total_seconds() == 20
 
 
 def test_stopped_attack_opens_no_connection(monkeypatch):
@@ -148,7 +166,8 @@ def test_all_includes_foreign_network(monkeypatch):
     names = []
     monkeypatch.setattr(attack_sim, "run_scenario", lambda name, *_: names.append(name) or True)
     assert attack_sim.main() == 0
-    assert names == ["bruteforce", "acl_violation", "flood", "spoof", "foreign_network"]
+    assert names == ["bruteforce", "acl_violation", "flood", "spoof", "foreign_network",
+                     "implausible_jump"]
 
 
 @pytest.mark.parametrize("accepted,published", [(False, True), (True, False)])

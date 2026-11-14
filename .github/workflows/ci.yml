@@ -194,7 +194,7 @@ jobs:
         run: python3 -m unittest discover -s .github/ci -p 'test_*.py' -v
       - run: bash scripts/bootstrap.sh
       - name: Start core services (demo profile excluded)
-        run: docker compose up -d --build --wait --wait-timeout 240 caddy simulator
+        run: docker compose up -d --build --wait --wait-timeout 240 caddy simulator grafana promtail
       - name: Check gateway health
         run: |
           curl --fail --silent --show-error --max-time 10 -k https://localhost:8443/api/telemetry/healthz

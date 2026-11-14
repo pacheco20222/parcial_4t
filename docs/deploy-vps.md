@@ -35,6 +35,7 @@ SITE_ADDRESS=203-0-113-7.sslip.io bash scripts/deploy-vps.sh
 ```
 
 The script writes `.env` (prod: Let's Encrypt, ports 80/443, site gate on, `cycle` scenario), runs `bootstrap.sh`, builds and starts everything, and runs the smoke test through the gate.
+It sets `COMPOSE_PROFILES=soc-demo` to start `attack-scheduler`: one weighted lab scenario every `ATTACK_INTERVAL_MINUTES` (default 12, minimum 5) with ±30% jitter.
 
 - Site gate (browser login prompt): user `demo`, password in `secrets/gate_password`.
 - App users: `admin|supervisor|operator@flood.local`, passwords in `secrets/seed_*_password`.

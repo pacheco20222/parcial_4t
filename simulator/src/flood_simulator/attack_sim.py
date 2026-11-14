@@ -1,16 +1,37 @@
 """Bounded SIEM demonstrations against the explicitly confirmed lab broker."""
 
+import argparse
+import json
+import math
 import os
+import random
 import secrets
+import sys
 import time
 from datetime import UTC, datetime
+from http.client import HTTPConnection, HTTPException
 from ipaddress import IPv4Address, IPv4Network
 from uuid import uuid4
 
 from .model import STATIONS, build_payload, topic
 from .runtime import Config, DeviceClient, log, stop_event
 
-ATTACK_SCENARIOS = {"all", "bruteforce", "acl_violation", "flood", "spoof", "foreign_network"}
+MQTT_SCENARIOS = (
+    "bruteforce", "acl_violation", "flood", "spoof", "foreign_network",
+    "implausible_jump",
+)
+SCENARIOS = (*MQTT_SCENARIOS, "login_failures")
+ATTACK_SCENARIOS = {"all", *SCENARIOS}
+# Single-message scenarios dominate; the bounded flood is deliberately rare.
+SCHEDULE_WEIGHTS = (3, 6, 1, 6, 6, 4)
+
+
+def allowed_scenarios(environ) -> tuple[str, ...]:
+    value = environ.get("ATTACK_SCENARIOS", ",".join(MQTT_SCENARIOS))
+    names = tuple(name.strip() for name in value.split(","))
+    if any(name not in SCENARIOS for name in names):
+        raise ValueError("invalid ATTACK_SCENARIOS")
+    return tuple(dict.fromkeys(names))
 
 
 def idmz_broker_host(environ) -> str:
@@ -29,7 +50,10 @@ def require_lab(environ) -> str:
     scenario = environ.get("ATTACK_SCENARIO", "all")
     if scenario not in ATTACK_SCENARIOS:
         raise ValueError("invalid ATTACK_SCENARIO")
-    if scenario in ("all", "foreign_network"):
+    names = allowed_scenarios(environ)
+    if scenario != "all" and "ATTACK_SCENARIOS" in environ and scenario not in names:
+        raise ValueError("ATTACK_SCENARIO is not allowed by ATTACK_SCENARIOS")
+    if scenario == "foreign_network" or (scenario == "all" and "foreign_network" in names):
         idmz_broker_host(environ)
     return scenario
 
@@ -46,8 +70,53 @@ def wait_response(client: DeviceClient, stop, timeout: float = 8) -> bool:
     return False
 
 
-def run_scenario(name: str, config: Config, stop) -> bool:
+def login_failures(stop) -> bool:
+    for attempt in range(10):
+        if stop.is_set():
+            return False
+        # Reserved invalid domain; never target a seeded account or accept an override.
+        body = json.dumps({"email": "intruso@example.invalid",
+                           "password": secrets.token_urlsafe(32)})
+        connection = HTTPConnection("ops-service", 8080, timeout=5)
+        try:
+            connection.request("POST", "/auth/login", body=body, headers={
+                "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest",
+            })
+            response = connection.getresponse()
+            try:
+                status = response.status
+            finally:
+                response.close()
+        except (OSError, HTTPException):
+            log("attack.connection_failed", level="ERROR", service="attack-sim",
+                scenario="login_failures")
+            return False
+        finally:
+            connection.close()
+        log("attack.login_attempt", service="attack-sim", scenario="login_failures",
+            attempt=attempt + 1, status=status)
+        if status != 401:  # Includes 429: no immediate retry of a rate-limited request.
+            return False
+        if attempt < 9 and stop.wait(3):
+            return False
+    return True
+
+
+def run_scenario(name: str, config: Config | None, stop) -> bool:
+    if name == "login_failures":
+        successful = login_failures(stop)
+        log("attack.scenario_completed", service="attack-sim", scenario=name,
+            status="sent" if successful else "incomplete")
+        return successful
+    if name not in MQTT_SCENARIOS:
+        raise ValueError("invalid MQTT scenario")
+    if stop.is_set():
+        return False
+    if config is None:
+        config = Config.load()
     station = STATIONS[1] if name == "acl_violation" else STATIONS[0]
+    if name == "implausible_jump":
+        station = STATIONS[3]
     route = {}
     if name == "foreign_network":
         station = STATIONS[2]
@@ -84,6 +153,14 @@ def run_scenario(name: str, config: Config, stop) -> bool:
                 successful = client.publish(topic(station), reading(STATIONS[1]))
             elif name == "foreign_network":
                 successful = client.publish(topic(station), reading(station))
+            elif name == "implausible_jump":
+                baseline = build_payload(station, 5.0, 0.0, datetime.now(UTC), uuid4())
+                if not client.publish(topic(station), baseline) or stop.wait(20):
+                    return False
+                # Range guard also ensures suspect quality if concurrent telemetry
+                # prevents the baseline becoming the last accepted reading.
+                jumped = build_payload(station, 151.0, 0.0, datetime.now(UTC), uuid4())
+                successful = client.publish(topic(station), jumped)
             elif name == "flood":
                 started = time.monotonic()
                 for index in range(30):
@@ -101,22 +178,61 @@ def run_scenario(name: str, config: Config, stop) -> bool:
     return successful
 
 
-def main() -> int:
+def schedule_interval(environ, names=MQTT_SCENARIOS) -> float:
+    login_only = names == ("login_failures",)
+    key = "LOGIN_ATTACK_INTERVAL_MINUTES" if login_only else "ATTACK_INTERVAL_MINUTES"
+    minimum = 10 if login_only else 5
+    minutes = float(environ.get(key, "30" if login_only else "12"))
+    if not math.isfinite(minutes) or minutes < minimum or not math.isfinite(minutes * 78):
+        raise ValueError(f"{key} must be finite and at least {minimum}")
+    return minutes * 60
+
+
+def run_schedule(config: Config | None, stop, interval: float, rng: random.Random,
+                 names=MQTT_SCENARIOS) -> None:
+    weights = dict(zip(MQTT_SCENARIOS, SCHEDULE_WEIGHTS, strict=True))
+    weights["login_failures"] = 3
+    selected_weights = tuple(weights[name] for name in names)
+    while not stop.wait(interval * rng.uniform(0.7, 1.3)):
+        if stop.is_set():
+            break
+        name = rng.choices(names, weights=selected_weights, k=1)[0]
+        log("attack.scheduled_run", service="attack-sim", scenario=name)
+        try:
+            if not run_scenario(name, config, stop):
+                log("attack.scenario_failed", level="WARNING", service="attack-sim", scenario=name)
+        except Exception:  # noqa: BLE001 -- keep demo scheduling alive after scenario failures
+            # A demo failure must not kill the scheduler; never log exception secrets.
+            log("attack.scenario_failed", level="ERROR", service="attack-sim", scenario=name)
+
+
+def main(argv=()) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--schedule", action="store_true")
+    args = parser.parse_args(argv)
     log("attack.banner", service="attack-sim",
-        banner="LAB ONLY: SIEM attack simulation against our own mosquitto broker")
+        banner="LAB ONLY: SIEM attack simulation against our own MQTT and Ops services")
     try:
         scenario = require_lab(os.environ)
-        config = Config.load()
-        stop = stop_event()
-        names = (
-            ("bruteforce", "acl_violation", "flood", "spoof", "foreign_network")
-            if scenario == "all" else (scenario,)
+        names = allowed_scenarios(os.environ)
+        # An explicit one-shot scenario overrides the service scheduling default.
+        scheduled = args.schedule or (
+            os.getenv("ATTACK_SCHEDULE") == "on" and scenario == "all"
         )
+        if scheduled:
+            if "foreign_network" in names:
+                idmz_broker_host(os.environ)
+            interval = schedule_interval(os.environ, names)
+        stop = stop_event()
+        if scheduled:
+            run_schedule(None, stop, interval, random.Random(), names)
+            return 0
+        names = names if scenario == "all" else (scenario,)
         success = True
         for name in names:
             if stop.is_set():
                 break
-            success = run_scenario(name, config, stop) and success
+            success = run_scenario(name, None, stop) and success
         return 0 if success else 1
     except (ValueError, OSError, TypeError, KeyError):
         log("attack.refused_or_failed", level="ERROR", service="attack-sim")
@@ -124,4 +240,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

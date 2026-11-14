@@ -26,6 +26,8 @@ class ComposeContractTests(unittest.TestCase):
             "telemetry-service": {"app_net", "data_net", "idmz_net"},
             "ops-service": {"app_net", "data_net"},
             "attack-sim": {"ot_net", "idmz_net"},
+            "attack-scheduler": {"ot_net", "idmz_net"},
+            "login-attacker": {"app_net"},
             "citizen-bot": {"app_net"},
             "loki": {"mon_net"}, "promtail": {"mon_net"}, "grafana": {"mon_net"},
         }
@@ -128,6 +130,47 @@ class ComposeContractTests(unittest.TestCase):
         self.assertEqual(bot.get("secrets", []), [])
         self.assertEqual(bot["environment"]["CITIZEN_BOT_ENABLED"], "${CITIZEN_BOT_ENABLED:-true}")
         self.assertEqual(bot["environment"]["CITIZEN_BOT_MIN_INTERVAL_SECONDS"], "${CITIZEN_BOT_MIN_INTERVAL_SECONDS:-150}")
+
+    def test_attack_scheduler_is_opt_in_and_matches_one_shot_hardening(self):
+        scheduler = self.services["attack-scheduler"]
+        one_shot = self.services["attack-sim"]
+        self.assertEqual(scheduler["profiles"], ["soc-demo"])
+        self.assertEqual(scheduler["command"], ["python", "-m", "flood_simulator.attack_sim", "--schedule"])
+        self.assertEqual(scheduler["environment"]["ATTACK_SIM_CONFIRM"], "lab")
+        self.assertEqual(scheduler["environment"]["ATTACK_INTERVAL_MINUTES"], "${ATTACK_INTERVAL_MINUTES:-12}")
+        for key in ["build", "user", "read_only", "cap_drop", "security_opt", "secrets",
+                    "mem_limit", "networks", "extra_hosts", "depends_on", "healthcheck"]:
+            self.assertEqual(scheduler[key], one_shot[key], key)
+        deploy = (ROOT / "scripts/deploy-vps.sh").read_text()
+        self.assertIn("\nCOMPOSE_PROFILES=soc-demo\n", deploy)
+        self.assertIn("\nATTACK_INTERVAL_MINUTES=${ATTACK_INTERVAL_MINUTES:-12}\n", deploy)
+
+    def test_attack_workloads_keep_ot_credentials_out_of_app_zone(self):
+        mqtt_scenarios = {"bruteforce", "acl_violation", "flood", "spoof",
+                          "foreign_network", "implausible_jump"}
+        for name in ("attack-sim", "attack-scheduler"):
+            service = self.services[name]
+            self.assertEqual(set(service["environment"]["ATTACK_SCENARIOS"].split(",")),
+                             mqtt_scenarios)
+            self.assertEqual(set(service["secrets"]), {"ca.crt", "mqtt_devices.json"})
+            self.assertNotIn("ops-service", service["depends_on"])
+        login = self.services["login-attacker"]
+        self.assertEqual(login["build"], self.services["simulator"]["build"])
+        self.assertEqual(login["profiles"], ["soc-demo"])
+        self.assertEqual(login["command"], ["python", "-m", "flood_simulator.attack_sim"])
+        self.assertEqual(login.get("secrets", []), [])
+        self.assertEqual(login.get("volumes", []), [])
+        self.assertEqual(login.get("extra_hosts", []), [])
+        self.assertEqual(set(login["depends_on"]), {"ops-service"})
+        self.assertEqual(login["environment"], {
+            "ATTACK_SIM_CONFIRM": "lab", "ATTACK_SCENARIOS": "login_failures",
+            "ATTACK_SCENARIO": "${ATTACK_SCENARIO:-all}",
+            "LOGIN_ATTACK_INTERVAL_MINUTES": "${LOGIN_ATTACK_INTERVAL_MINUTES:-30}",
+            "ATTACK_SCHEDULE": "${ATTACK_SCHEDULE:-on}",
+        })
+        for service in self.services.values():
+            if "mqtt_devices.json" in service.get("secrets", []):
+                self.assertNotIn("app_net", service["networks"])
 
     def test_static_assets_bypass_spa_and_cache_policy(self):
         conf = (ROOT / "infra/caddy/Caddyfile").read_text()

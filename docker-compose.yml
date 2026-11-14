@@ -180,7 +180,7 @@ services:
       <<: *health
       test: [CMD, python, -c, 'import os; os.kill(1, 0)']
 
-  attack-sim:
+  attack-sim: &attack-demo
     <<: *hardening
     build: ./simulator
     profiles: [demo]
@@ -190,6 +190,7 @@ services:
     environment:
       <<: *simulator-env
       ATTACK_SIM_CONFIRM: lab
+      ATTACK_SCENARIOS: &mqtt-attack-scenarios bruteforce,acl_violation,flood,spoof,foreign_network,implausible_jump
     secrets: [ca.crt, mqtt_devices.json]
     # Force IDMZ routing while retaining the certificate SAN hostname.
     extra_hosts: ["mosquitto:172.30.20.10"]
@@ -197,6 +198,35 @@ services:
     depends_on:
       mosquitto: {condition: service_healthy}
       telemetry-service: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      test: [CMD, python, -c, 'import os; os.kill(1, 0)']
+
+  attack-scheduler:
+    <<: *attack-demo
+    profiles: [soc-demo]
+    command: [python, -m, flood_simulator.attack_sim, --schedule]
+    environment:
+      <<: *simulator-env
+      ATTACK_SIM_CONFIRM: lab
+      ATTACK_SCENARIOS: *mqtt-attack-scenarios
+      ATTACK_INTERVAL_MINUTES: ${ATTACK_INTERVAL_MINUTES:-12}
+
+  login-attacker:
+    <<: *hardening
+    build: ./simulator
+    profiles: [soc-demo]
+    user: "10001:10001"
+    mem_limit: 128m
+    command: [python, -m, flood_simulator.attack_sim]
+    environment:
+      ATTACK_SIM_CONFIRM: lab
+      ATTACK_SCENARIOS: login_failures
+      ATTACK_SCENARIO: ${ATTACK_SCENARIO:-all}
+      ATTACK_SCHEDULE: ${ATTACK_SCHEDULE:-on}
+      LOGIN_ATTACK_INTERVAL_MINUTES: ${LOGIN_ATTACK_INTERVAL_MINUTES:-30}
+    networks: [app_net]
+    depends_on:
       ops-service: {condition: service_healthy}
     healthcheck:
       <<: *health
