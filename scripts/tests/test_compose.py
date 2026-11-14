@@ -25,8 +25,9 @@ class ComposeContractTests(unittest.TestCase):
             "mosquitto": {"ot_net", "idmz_net"}, "simulator": {"ot_net"},
             "telemetry-service": {"app_net", "data_net", "idmz_net"},
             "ops-service": {"app_net", "data_net"},
-            "attack-sim": {"ot_net", "idmz_net", "app_net"},
-            "attack-scheduler": {"ot_net", "idmz_net", "app_net"},
+            "attack-sim": {"ot_net", "idmz_net"},
+            "attack-scheduler": {"ot_net", "idmz_net"},
+            "login-attacker": {"app_net"},
             "citizen-bot": {"app_net"},
             "loki": {"mon_net"}, "promtail": {"mon_net"}, "grafana": {"mon_net"},
         }
@@ -143,6 +144,33 @@ class ComposeContractTests(unittest.TestCase):
         deploy = (ROOT / "scripts/deploy-vps.sh").read_text()
         self.assertIn("\nCOMPOSE_PROFILES=soc-demo\n", deploy)
         self.assertIn("\nATTACK_INTERVAL_MINUTES=${ATTACK_INTERVAL_MINUTES:-12}\n", deploy)
+
+    def test_attack_workloads_keep_ot_credentials_out_of_app_zone(self):
+        mqtt_scenarios = {"bruteforce", "acl_violation", "flood", "spoof",
+                          "foreign_network", "implausible_jump"}
+        for name in ("attack-sim", "attack-scheduler"):
+            service = self.services[name]
+            self.assertEqual(set(service["environment"]["ATTACK_SCENARIOS"].split(",")),
+                             mqtt_scenarios)
+            self.assertEqual(set(service["secrets"]), {"ca.crt", "mqtt_devices.json"})
+            self.assertNotIn("ops-service", service["depends_on"])
+        login = self.services["login-attacker"]
+        self.assertEqual(login["build"], self.services["simulator"]["build"])
+        self.assertEqual(login["profiles"], ["soc-demo"])
+        self.assertEqual(login["command"], ["python", "-m", "flood_simulator.attack_sim"])
+        self.assertEqual(login.get("secrets", []), [])
+        self.assertEqual(login.get("volumes", []), [])
+        self.assertEqual(login.get("extra_hosts", []), [])
+        self.assertEqual(set(login["depends_on"]), {"ops-service"})
+        self.assertEqual(login["environment"], {
+            "ATTACK_SIM_CONFIRM": "lab", "ATTACK_SCENARIOS": "login_failures",
+            "ATTACK_SCENARIO": "${ATTACK_SCENARIO:-all}",
+            "LOGIN_ATTACK_INTERVAL_MINUTES": "${LOGIN_ATTACK_INTERVAL_MINUTES:-30}",
+            "ATTACK_SCHEDULE": "${ATTACK_SCHEDULE:-on}",
+        })
+        for service in self.services.values():
+            if "mqtt_devices.json" in service.get("secrets", []):
+                self.assertNotIn("app_net", service["networks"])
 
     def test_static_assets_bypass_spa_and_cache_policy(self):
         conf = (ROOT / "infra/caddy/Caddyfile").read_text()

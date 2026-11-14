@@ -167,7 +167,7 @@ def test_all_includes_foreign_network(monkeypatch):
     monkeypatch.setattr(attack_sim, "run_scenario", lambda name, *_: names.append(name) or True)
     assert attack_sim.main() == 0
     assert names == ["bruteforce", "acl_violation", "flood", "spoof", "foreign_network",
-                     "login_failures", "implausible_jump"]
+                     "implausible_jump"]
 
 
 @pytest.mark.parametrize("accepted,published", [(False, True), (True, False)])

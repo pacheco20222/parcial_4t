@@ -98,8 +98,8 @@ def test_scheduler_jitter_weights_and_failure_survival(monkeypatch, capsys, jitt
     run.assert_called_with("spoof", config, stop)
     assert all(call.args == (720 * jitter,) for call in stop.wait.call_args_list)
     rng.uniform.assert_called_with(0.7, 1.3)
-    rng.choices.assert_called_with(attack_sim.SCENARIOS, weights=attack_sim.SCHEDULE_WEIGHTS, k=1)
-    weights = dict(zip(attack_sim.SCENARIOS, attack_sim.SCHEDULE_WEIGHTS, strict=True))
+    rng.choices.assert_called_with(attack_sim.MQTT_SCENARIOS, weights=attack_sim.SCHEDULE_WEIGHTS, k=1)
+    weights = dict(zip(attack_sim.MQTT_SCENARIOS, attack_sim.SCHEDULE_WEIGHTS, strict=True))
     assert weights["flood"] < min(v for k, v in weights.items() if k != "flood")
     output = capsys.readouterr().out
     assert "secret-test-only" not in output
@@ -149,3 +149,141 @@ def test_jump_cancelled_wait_closes_client(monkeypatch):
     payload = client.publish.call_args.args[1]
     elapsed = datetime.now().astimezone() - datetime.fromisoformat(payload["capturedAt"])
     assert abs(elapsed.total_seconds()) < 5
+
+
+@pytest.mark.parametrize("scenario", ["all", "login_failures"])
+@pytest.mark.parametrize("scheduled", [False, True])
+def test_login_only_entrypoints_need_no_mqtt_secrets(monkeypatch, scenario, scheduled):
+    monkeypatch.setenv("ATTACK_SIM_CONFIRM", "lab")
+    monkeypatch.setenv("ATTACK_SCENARIOS", "login_failures")
+    monkeypatch.setenv("ATTACK_SCENARIO", scenario)
+    monkeypatch.setenv("ATTACK_IDMZ_BROKER_HOST", "unused-for-http")
+    monkeypatch.delenv("ATTACK_SCHEDULE", raising=False)
+    monkeypatch.delenv("LOGIN_ATTACK_INTERVAL_MINUTES", raising=False)
+    monkeypatch.setattr(attack_sim.Config, "load", lambda: pytest.fail("read MQTT secrets"))
+    stop = MagicMock()
+    stop.wait.side_effect = [False, True] if scheduled else []
+    stop.is_set.return_value = False
+    monkeypatch.setattr(attack_sim, "stop_event", lambda: stop)
+    run = MagicMock(return_value=True)
+    monkeypatch.setattr(attack_sim, "login_failures", run)
+    assert attack_sim.main(["--schedule"] if scheduled else []) == 0
+    run.assert_called_once_with(stop)
+    if scheduled:
+        assert all(1260 <= call.args[0] <= 2340 for call in stop.wait.call_args_list)
+
+
+@pytest.mark.parametrize("value", ["9.99", "0", "-1", "nan", "inf", "bad", "1e308"])
+def test_login_scheduler_rejects_invalid_interval_before_io(monkeypatch, value):
+    monkeypatch.setenv("ATTACK_SIM_CONFIRM", "lab")
+    monkeypatch.setenv("ATTACK_SCENARIOS", "login_failures")
+    monkeypatch.setenv("LOGIN_ATTACK_INTERVAL_MINUTES", value)
+    monkeypatch.setattr(attack_sim.Config, "load", lambda: pytest.fail("read secrets"))
+    monkeypatch.setattr(attack_sim, "stop_event", lambda: pytest.fail("started scheduler"))
+    assert attack_sim.main(["--schedule"]) == 1
+
+
+@pytest.mark.parametrize("jitter", [0.7, 1.3])
+def test_login_scheduler_uses_own_minimum_interval(monkeypatch, jitter):
+    monkeypatch.setenv("ATTACK_SIM_CONFIRM", "lab")
+    monkeypatch.setenv("ATTACK_SCENARIOS", "login_failures")
+    monkeypatch.setenv("LOGIN_ATTACK_INTERVAL_MINUTES", "10")
+    monkeypatch.setenv("ATTACK_INTERVAL_MINUTES", "invalid-unused")
+    stop = MagicMock()
+    stop.wait.side_effect = [False, True]
+    stop.is_set.return_value = False
+    monkeypatch.setattr(attack_sim, "stop_event", lambda: stop)
+    rng = MagicMock()
+    rng.uniform.return_value = jitter
+    rng.choices.return_value = ["login_failures"]
+    monkeypatch.setattr(attack_sim.random, "Random", lambda: rng)
+    monkeypatch.setattr(attack_sim.Config, "load", lambda: pytest.fail("read secrets"))
+    monkeypatch.setattr(attack_sim, "login_failures", lambda _: True)
+    assert attack_sim.main(["--schedule"]) == 0
+    assert all(call.args == (600 * jitter,) for call in stop.wait.call_args_list)
+
+
+@pytest.mark.parametrize("allowlist", ["", "all", "spoof,unknown", "spoof,", ",spoof"])
+def test_invalid_allowlist_refused_before_io(monkeypatch, allowlist):
+    monkeypatch.setenv("ATTACK_SIM_CONFIRM", "lab")
+    monkeypatch.setenv("ATTACK_SCENARIOS", allowlist)
+    monkeypatch.setattr(attack_sim.Config, "load", lambda: pytest.fail("read secrets"))
+    monkeypatch.setattr(attack_sim, "stop_event", lambda: pytest.fail("started"))
+    assert attack_sim.main() == 1
+
+
+def test_all_uses_trimmed_allowlist_order(monkeypatch):
+    monkeypatch.setenv("ATTACK_SIM_CONFIRM", "lab")
+    monkeypatch.setenv("ATTACK_SCENARIOS", " spoof, acl_violation ")
+    monkeypatch.setenv("ATTACK_SCENARIO", "all")
+    monkeypatch.setattr(attack_sim, "stop_event", threading.Event)
+    run = MagicMock(return_value=True)
+    monkeypatch.setattr(attack_sim, "run_scenario", run)
+    assert attack_sim.main() == 0
+    assert [call.args[0] for call in run.call_args_list] == ["spoof", "acl_violation"]
+
+
+def test_explicit_scenario_cannot_bypass_allowlist(monkeypatch):
+    monkeypatch.setenv("ATTACK_SIM_CONFIRM", "lab")
+    monkeypatch.setenv("ATTACK_SCENARIOS", "spoof,flood")
+    monkeypatch.setenv("ATTACK_SCENARIO", "login_failures")
+    monkeypatch.setattr(attack_sim, "login_failures", lambda _: pytest.fail("HTTP attempted"))
+    monkeypatch.setattr(attack_sim.Config, "load", lambda: pytest.fail("read secrets"))
+    assert attack_sim.main() == 1
+
+
+def test_mqtt_config_loaded_only_when_mqtt_scenario_runs(monkeypatch):
+    config = Config()
+    load = MagicMock(return_value=config)
+    client = MagicMock(accepted=True)
+    monkeypatch.setattr(attack_sim.Config, "load", load)
+    factory = MagicMock(return_value=client)
+    monkeypatch.setattr(attack_sim, "DeviceClient", factory)
+    monkeypatch.setattr(attack_sim, "wait_response", lambda *_: True)
+    assert attack_sim.run_scenario("spoof", None, threading.Event())
+    load.assert_called_once_with()
+    assert factory.call_args.args[0] is config
+
+
+def test_explicit_login_scenario_overrides_service_schedule_default(monkeypatch):
+    monkeypatch.setenv("ATTACK_SIM_CONFIRM", "lab")
+    monkeypatch.setenv("ATTACK_SCENARIOS", "login_failures")
+    monkeypatch.setenv("ATTACK_SCENARIO", "login_failures")
+    monkeypatch.setenv("ATTACK_SCHEDULE", "on")
+    monkeypatch.setattr(attack_sim.Config, "load", lambda: pytest.fail("read secrets"))
+    monkeypatch.setattr(attack_sim, "stop_event", threading.Event)
+    monkeypatch.setattr(attack_sim, "run_schedule", lambda *a: pytest.fail("scheduled one-shot"))
+    run = MagicMock(return_value=True)
+    monkeypatch.setattr(attack_sim, "login_failures", run)
+    assert attack_sim.main() == 0
+    assert run.call_count == 1
+
+
+def test_schedule_filters_choices_and_weights_to_allowlist(monkeypatch):
+    monkeypatch.setenv("ATTACK_SIM_CONFIRM", "lab")
+    monkeypatch.setenv("ATTACK_SCENARIOS", "spoof,flood")
+    monkeypatch.setenv("ATTACK_SCENARIO", "all")
+    stop = MagicMock()
+    stop.wait.side_effect = [False, True]
+    stop.is_set.return_value = False
+    monkeypatch.setattr(attack_sim, "stop_event", lambda: stop)
+    rng = MagicMock()
+    rng.uniform.return_value = 1
+    rng.choices.return_value = ["spoof"]
+    monkeypatch.setattr(attack_sim.random, "Random", lambda: rng)
+    run = MagicMock(return_value=True)
+    monkeypatch.setattr(attack_sim, "run_scenario", run)
+    assert attack_sim.main(["--schedule"]) == 0
+    rng.choices.assert_called_once_with(("spoof", "flood"), weights=(6, 1), k=1)
+    assert run.call_args.args[0] == "spoof"
+
+
+def test_waiting_mqtt_scheduler_does_not_load_credentials(monkeypatch):
+    monkeypatch.setenv("ATTACK_SIM_CONFIRM", "lab")
+    monkeypatch.delenv("ATTACK_SCENARIOS", raising=False)
+    monkeypatch.setenv("ATTACK_SCENARIO", "all")
+    stop = threading.Event()
+    stop.set()
+    monkeypatch.setattr(attack_sim, "stop_event", lambda: stop)
+    monkeypatch.setattr(attack_sim.Config, "load", lambda: pytest.fail("read secrets before MQTT"))
+    assert attack_sim.main(["--schedule"]) == 0

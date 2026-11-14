@@ -90,15 +90,33 @@ Same TLS settings and mounted secrets. `ATTACK_SCENARIO`:
   The >30 cm jump triggers quality checks; exceeding the 150 cm sensor range
   also guarantees suspect quality if concurrent telemetry disrupts the baseline.
   Telemetry owns quality checks; suspect readings never change flood status.
-- `all`: runs all seven sequentially, then exits.
+- `all`: runs the six MQTT scenarios sequentially by default, then exits; excludes login failures.
 
-Automatic lab demo: `docker compose --profile soc-demo up -d attack-scheduler`.
+`ATTACK_SCENARIOS` sets a comma-separated allowlist for `all` and scheduling;
+defaults to the six MQTT scenarios. Whitespace is trimmed, duplicates deduplicated,
+and empty/unknown entries refused. Explicit scenarios must belong to a configured
+allowlist. MQTT Compose services allow only the six MQTT cases.
+
+SR-06 uses a separate, secret-free `login-attacker` on `app_net` only:
+
+```sh
+docker compose --profile demo run --rm -e ATTACK_SCENARIO=login_failures login-attacker
+```
+
+Explicit service targeting permits this run despite its `soc-demo` profile.
+Login needs no MQTT CA or devices file; MQTT config loads only for MQTT scenarios.
+Automatic lab demo:
+`docker compose --profile soc-demo up -d attack-scheduler login-attacker`.
 Runs the same module with `--schedule` (also enabled by `ATTACK_SCHEDULE=on`),
 requiring the same lab guard and mounted secrets. `ATTACK_INTERVAL_MINUTES=12`
 is the nominal wait, minimum 5, with ±30% jitter before each run including startup.
-One scenario runs per wait; weights in the order above are 3/6/1/6/6/3/4,
+One MQTT scenario runs per wait; weights are 3/6/1/6/6/4 (excluding login failures),
 making flood rare. `attack.scheduled_run` records the selection; failed/raised
 scenarios log `attack.scenario_failed` and scheduling continues without immediate retry.
+`login-attacker` allows only `login_failures`, with `ATTACK_SCHEDULE=on` by default
+and its own `LOGIN_ATTACK_INTERVAL_MINUTES=30` (nominal minimum 10), ±30% jitter
+before every run, including startup. Explicit `ATTACK_SCENARIO=login_failures`
+overrides this scheduling default to run once; `--schedule` always schedules.
 SIGTERM interrupts waits; in-flight HTTP finishes within its timeout.
 
 `foreign_network` connects TCP to `ATTACK_IDMZ_BROKER_HOST` (default `172.30.20.10`),
@@ -122,8 +140,9 @@ Build context: `simulator/`. Dockerfile pins Python 3.13.9 slim-bookworm and uv 
 runs `uv sync --frozen --no-dev`, then uses UID/GID 10001 with no exposed ports.
 Default command runs telemetry; reuse image for attack-sim with Compose command
 `["python", "-m", "flood_simulator.attack_sim"]`, confirmation env and lab-only profile.
-Attach OT, IDMZ and app networks for both attack services (app only for Ops login);
-mount CA and device secrets readable by UID 10001. No new deps.
+Attach only OT and IDMZ networks for `attack-sim` / `attack-scheduler`;
+mount CA and device secrets readable by UID 10001. `login-attacker` uses only
+`app_net`, no secret or volume mounts, and only depends on Ops. No new deps.
 Orchestrator must build/run the image and verify broker auth, ACL denials, reconnect,
 NoData/status transitions and SR-01–06 in the complete Compose stack. Concurrent
 sensor traffic/rate limits can affect delivery of the P04 pair; verify suspect logs

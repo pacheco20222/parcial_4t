@@ -16,13 +16,22 @@ from uuid import uuid4
 from .model import STATIONS, build_payload, topic
 from .runtime import Config, DeviceClient, log, stop_event
 
-SCENARIOS = (
+MQTT_SCENARIOS = (
     "bruteforce", "acl_violation", "flood", "spoof", "foreign_network",
-    "login_failures", "implausible_jump",
+    "implausible_jump",
 )
+SCENARIOS = (*MQTT_SCENARIOS, "login_failures")
 ATTACK_SCENARIOS = {"all", *SCENARIOS}
 # Single-message scenarios dominate; the bounded flood is deliberately rare.
-SCHEDULE_WEIGHTS = (3, 6, 1, 6, 6, 3, 4)
+SCHEDULE_WEIGHTS = (3, 6, 1, 6, 6, 4)
+
+
+def allowed_scenarios(environ) -> tuple[str, ...]:
+    value = environ.get("ATTACK_SCENARIOS", ",".join(MQTT_SCENARIOS))
+    names = tuple(name.strip() for name in value.split(","))
+    if any(name not in SCENARIOS for name in names):
+        raise ValueError("invalid ATTACK_SCENARIOS")
+    return tuple(dict.fromkeys(names))
 
 
 def idmz_broker_host(environ) -> str:
@@ -41,7 +50,10 @@ def require_lab(environ) -> str:
     scenario = environ.get("ATTACK_SCENARIO", "all")
     if scenario not in ATTACK_SCENARIOS:
         raise ValueError("invalid ATTACK_SCENARIO")
-    if scenario in ("all", "foreign_network"):
+    names = allowed_scenarios(environ)
+    if scenario != "all" and "ATTACK_SCENARIOS" in environ and scenario not in names:
+        raise ValueError("ATTACK_SCENARIO is not allowed by ATTACK_SCENARIOS")
+    if scenario == "foreign_network" or (scenario == "all" and "foreign_network" in names):
         idmz_broker_host(environ)
     return scenario
 
@@ -90,12 +102,18 @@ def login_failures(stop) -> bool:
     return True
 
 
-def run_scenario(name: str, config: Config, stop) -> bool:
+def run_scenario(name: str, config: Config | None, stop) -> bool:
     if name == "login_failures":
         successful = login_failures(stop)
         log("attack.scenario_completed", service="attack-sim", scenario=name,
             status="sent" if successful else "incomplete")
         return successful
+    if name not in MQTT_SCENARIOS:
+        raise ValueError("invalid MQTT scenario")
+    if stop.is_set():
+        return False
+    if config is None:
+        config = Config.load()
     station = STATIONS[1] if name == "acl_violation" else STATIONS[0]
     if name == "implausible_jump":
         station = STATIONS[3]
@@ -160,18 +178,25 @@ def run_scenario(name: str, config: Config, stop) -> bool:
     return successful
 
 
-def schedule_interval(environ) -> float:
-    minutes = float(environ.get("ATTACK_INTERVAL_MINUTES", "12"))
-    if not math.isfinite(minutes) or minutes < 5 or not math.isfinite(minutes * 78):
-        raise ValueError("ATTACK_INTERVAL_MINUTES must be finite and at least 5")
+def schedule_interval(environ, names=MQTT_SCENARIOS) -> float:
+    login_only = names == ("login_failures",)
+    key = "LOGIN_ATTACK_INTERVAL_MINUTES" if login_only else "ATTACK_INTERVAL_MINUTES"
+    minimum = 10 if login_only else 5
+    minutes = float(environ.get(key, "30" if login_only else "12"))
+    if not math.isfinite(minutes) or minutes < minimum or not math.isfinite(minutes * 78):
+        raise ValueError(f"{key} must be finite and at least {minimum}")
     return minutes * 60
 
 
-def run_schedule(config: Config, stop, interval: float, rng: random.Random) -> None:
+def run_schedule(config: Config | None, stop, interval: float, rng: random.Random,
+                 names=MQTT_SCENARIOS) -> None:
+    weights = dict(zip(MQTT_SCENARIOS, SCHEDULE_WEIGHTS, strict=True))
+    weights["login_failures"] = 3
+    selected_weights = tuple(weights[name] for name in names)
     while not stop.wait(interval * rng.uniform(0.7, 1.3)):
         if stop.is_set():
             break
-        name = rng.choices(SCENARIOS, weights=SCHEDULE_WEIGHTS, k=1)[0]
+        name = rng.choices(names, weights=selected_weights, k=1)[0]
         log("attack.scheduled_run", service="attack-sim", scenario=name)
         try:
             if not run_scenario(name, config, stop):
@@ -189,21 +214,25 @@ def main(argv=()) -> int:
         banner="LAB ONLY: SIEM attack simulation against our own MQTT and Ops services")
     try:
         scenario = require_lab(os.environ)
-        scheduled = args.schedule or os.getenv("ATTACK_SCHEDULE") == "on"
+        names = allowed_scenarios(os.environ)
+        # An explicit one-shot scenario overrides the service scheduling default.
+        scheduled = args.schedule or (
+            os.getenv("ATTACK_SCHEDULE") == "on" and scenario == "all"
+        )
         if scheduled:
-            idmz_broker_host(os.environ)
-            interval = schedule_interval(os.environ)
-        config = Config.load()
+            if "foreign_network" in names:
+                idmz_broker_host(os.environ)
+            interval = schedule_interval(os.environ, names)
         stop = stop_event()
         if scheduled:
-            run_schedule(config, stop, interval, random.Random())
+            run_schedule(None, stop, interval, random.Random(), names)
             return 0
-        names = SCENARIOS if scenario == "all" else (scenario,)
+        names = names if scenario == "all" else (scenario,)
         success = True
         for name in names:
             if stop.is_set():
                 break
-            success = run_scenario(name, config, stop) and success
+            success = run_scenario(name, None, stop) and success
         return 0 if success else 1
     except (ValueError, OSError, TypeError, KeyError):
         log("attack.refused_or_failed", level="ERROR", service="attack-sim")
