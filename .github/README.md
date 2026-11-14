@@ -44,6 +44,39 @@ CodeQL is skipped while the repo is private (code scanning needs GitHub Advanced
 may restrict SARIF upload. Organization-owned repositories may need a Gitleaks
 license configured separately as `GITLEAKS_LICENSE` in the action environment.
 
-CD is deferred: publish GHCR images tagged by immutable commit SHA, deploy over
-SSH only after GitHub environment approval, and roll back by selecting the
-previous SHA tag. No publish/deploy workflow or write permission is enabled here.
+## Continuous deployment
+
+`cd.yml` exposes the manual **Deploy** button on `main` only. The `production`
+environment requires owner approval; `deploy-production` concurrency serializes
+deployments without cancelling the running job. It does not run CI automatically:
+check Backend CI is green for the selected commit before approving.
+
+The runner ships a full-history `main` Git bundle over SSH, so the private repo
+needs no GitHub credentials on the VPS. The dedicated key can invoke only
+`/opt/parcial_4t/scripts/ci-deploy.sh` as `claude4t`. That receiver caps input at
+50 MiB, verifies the bundle, fast-forwards `main`, reads the existing `.env`
+`SITE_ADDRESS`, and calls the existing deployment helper with `SKIP_PULL=1` and
+`BEHIND_PROXY=1`. Application secrets remain file-backed; no new endpoints or
+application events are introduced. Receiver JSON logs use `deploy.*` events;
+client command text is never executed or printed (only its presence is logged).
+
+Production environment secrets: `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`, `VPS_USER`
+(`claude4t`), `VPS_HOST`, `GATE_USER`, and `GATE_PASSWORD`. Set `SITE_ADDRESS` as
+an environment variable or secret (hostname only). SSH requires the pinned host
+key; the runner never learns host keys on first connection. The temporary SSH
+key is mode 0600 and shredded on exit and by an always-run cleanup step. Public
+validation calls `https://<SITE_ADDRESS>/api/telemetry/healthz` through Basic Auth.
+
+Setup and manual run: [VPS deployment](../docs/deploy-vps.md#continuous-deployment).
+Offline checks from the repository root (existing telemetry environment):
+
+```sh
+bash -n scripts/ci-deploy.sh
+services/telemetry-service/.venv/bin/python -c 'import yaml; yaml.safe_load(open(".github/workflows/cd.yml"))'
+services/telemetry-service/.venv/bin/python -m unittest discover -s scripts/tests
+```
+
+These checks do not prove SSH access, required-reviewer enforcement, Docker
+builds, or public health. A failed deploy exits nonzero; no automatic rollback
+or volume deletion is performed. Use the existing operator deployment procedure
+to recover, preserving volumes and secrets.

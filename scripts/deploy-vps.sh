@@ -38,7 +38,18 @@ bash scripts/bootstrap.sh                       # only creates missing secrets
 # Low CPU/IO priority so image builds don't slow down other services on a shared host.
 nice -n 10 ionice -c3 docker compose build
 docker compose up -d --wait --remove-orphans
-python3 scripts/smoke.py --base "https://${SITE_ADDRESS}" --gate
+if [[ "$BEHIND_PROXY" == "1" ]]; then
+  # Shared host: no hairpin to its own public IP. Smoke the stack from edge_net, verifying Caddy's local CA.
+  cip=$(docker inspect merida-flood-caddy-1 --format '{{(index .NetworkSettings.Networks "merida-flood_edge_net").IPAddress}}')
+  ca=$(mktemp); trap 'rm -f "$ca"' EXIT
+  docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt "$ca" >/dev/null
+  chmod 644 "$ca"
+  docker run --rm --network merida-flood_edge_net --add-host "${SITE_ADDRESS}:${cip}" \
+    -v "$PWD:/repo:ro" -v "$ca:/ca.crt:ro" -e GATE_MODE=on -w /repo python:3.13.18-slim-trixie \
+    python scripts/smoke.py --base "https://${SITE_ADDRESS}" --ca /ca.crt
+else
+  python3 scripts/smoke.py --base "https://${SITE_ADDRESS}" --gate
+fi
 
 echo
 echo "Deployed: https://${SITE_ADDRESS}"
