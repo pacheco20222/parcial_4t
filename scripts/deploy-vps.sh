@@ -1,20 +1,28 @@
 #!/usr/bin/env bash
-# Deploy/update the stack on the presentation VPS (Ubuntu, run as the non-root deploy user).
-# Usage: SITE_ADDRESS=<host or a-b-c-d.sslip.io> bash scripts/deploy-vps.sh
-# Idempotent: safe to re-run for updates (git pull + rebuild). Never deletes volumes or secrets.
+# Deploy/update the stack on the presentation VPS (run as the deploy user, from the repo checkout).
+#   SITE_ADDRESS=<host or a-b-c-d.sslip.io> bash scripts/deploy-vps.sh
+# Default BEHIND_PROXY=1: shared VPS whose host nginx owns 80/443 and proxies to our Caddy on
+# 127.0.0.1:8443 (infra/nginx/parcial4t.conf). BEHIND_PROXY=0: dedicated VPS, Caddy binds 80/443
+# itself and gets Let's Encrypt certificates.
+# Idempotent: re-run to update (git pull + rebuild). Never deletes volumes or secrets.
 set -euo pipefail
 
 : "${SITE_ADDRESS:?set SITE_ADDRESS (domain or <ip-with-dashes>.sslip.io)}"
+BEHIND_PROXY="${BEHIND_PROXY:-1}"
 cd "$(dirname "$0")/.."
 
-command -v docker >/dev/null || { echo "Docker missing: see docs/deploy-vps.md step 2" >&2; exit 1; }
+command -v docker >/dev/null || { echo "Docker missing: see docs/deploy-vps.md" >&2; exit 1; }
 
-# Production settings (kept in a git-ignored .env next to docker-compose.yml)
+if [[ "$BEHIND_PROXY" == "1" ]]; then
+  net=$'TLS_MODE=internal\nGATEWAY_BIND=127.0.0.1\nGATEWAY_HTTPS_PORT=8443\nGATEWAY_HTTP_PORT=8081'
+else
+  net=$'TLS_MODE=acme\nGATEWAY_BIND=0.0.0.0\nGATEWAY_HTTPS_PORT=443\nGATEWAY_HTTP_PORT=80'
+fi
+
+# Production settings (git-ignored .env next to docker-compose.yml)
 cat > .env <<EOF
 SITE_ADDRESS=${SITE_ADDRESS}
-TLS_MODE=acme
-GATEWAY_HTTPS_PORT=443
-GATEWAY_HTTP_PORT=80
+${net}
 GATE_MODE=on
 GATE_USER=${GATE_USER:-demo}
 ENVIRONMENT=prod
@@ -27,7 +35,9 @@ chmod 600 .env
 
 git pull --ff-only
 bash scripts/bootstrap.sh                       # only creates missing secrets
-docker compose up -d --build --wait --remove-orphans
+# Low CPU/IO priority so image builds don't slow down other services on a shared host.
+nice -n 10 ionice -c3 docker compose build
+docker compose up -d --wait --remove-orphans
 python3 scripts/smoke.py --base "https://${SITE_ADDRESS}" --gate
 
 echo

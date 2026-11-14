@@ -250,8 +250,9 @@ services:
       XDG_DATA_HOME: /data
       XDG_CONFIG_HOME: /config
     ports:
-      - "${GATEWAY_HTTPS_PORT:-8443}:443"
-      - "${GATEWAY_HTTP_PORT:-8080}:80"
+      # Loopback by default: locally the browser uses localhost; on the shared VPS the host nginx proxies to it.
+      - "${GATEWAY_BIND:-127.0.0.1}:${GATEWAY_HTTPS_PORT:-8443}:443"
+      - "${GATEWAY_BIND:-127.0.0.1}:${GATEWAY_HTTP_PORT:-8080}:80"
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddydata:/data
