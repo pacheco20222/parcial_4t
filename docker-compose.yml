@@ -246,6 +246,7 @@ services:
       GATEWAY_HTTPS_PORT: ${GATEWAY_HTTPS_PORT:-8443}
       GATE_MODE: ${GATE_MODE:-off}
       TLS_MODE: ${TLS_MODE:-internal}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32}
       GATE_USER: ${GATE_USER:-demo}
       XDG_DATA_HOME: /data
       XDG_CONFIG_HOME: /config

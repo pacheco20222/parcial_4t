@@ -2,8 +2,10 @@
 	admin localhost:2019
 	auto_https disable_redirects
 	servers {
-		# Only peer allowed to set X-Forwarded-For: the edge_net gateway (the host's nginx on the VPS, via 127.0.0.1).
-		trusted_proxies static 172.30.0.1/32
+		# Trust X-Forwarded-For only when the host nginx fronts us on loopback (deploy BEHIND_PROXY=1 sets
+		# TRUSTED_PROXIES=172.30.0.1/32). Default trusts nothing real: direct/public binds must never trust XFF.
+		trusted_proxies static {$TRUSTED_PROXIES:127.0.0.1/32}
+		trusted_proxies_strict
 	}
 }
 

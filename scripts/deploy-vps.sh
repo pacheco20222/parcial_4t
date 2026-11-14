@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 command -v docker >/dev/null || { echo "Docker missing: see docs/deploy-vps.md" >&2; exit 1; }
 
 if [[ "$BEHIND_PROXY" == "1" ]]; then
-  net=$'TLS_MODE=internal\nGATEWAY_BIND=127.0.0.1\nGATEWAY_HTTPS_PORT=8443\nGATEWAY_HTTP_PORT=8081'
+  net=$'TLS_MODE=internal\nGATEWAY_BIND=127.0.0.1\nGATEWAY_HTTPS_PORT=8443\nGATEWAY_HTTP_PORT=8081\nTRUSTED_PROXIES=172.30.0.1/32'
 else
   net=$'TLS_MODE=acme\nGATEWAY_BIND=0.0.0.0\nGATEWAY_HTTPS_PORT=443\nGATEWAY_HTTP_PORT=80'
 fi
