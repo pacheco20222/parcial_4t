@@ -282,6 +282,7 @@ services:
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_PLUGINS_DISABLE_PLUGINS: grafana-lokiexplore-app   # bundled app we do not use; its module 404s under /soc
       GF_NEWS_NEWS_FEED_ENABLED: "false"   # no outbound calls to grafana.com from the SOC console
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/soc.json   # home = SOC dashboard (default home has an external RSS panel)
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SECURITY_COOKIE_SECURE: "true"
